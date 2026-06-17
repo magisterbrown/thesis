@@ -1,0 +1,11 @@
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+FINUFFT (Finitely Nonuniform Fast Fourier Transform) is a high-performance library for computing nonuniform fast Fourier transforms. Its performance is highly sensitive to the choice of configuration parameters, yet no systematic approach exists for selecting optimal parameters for a given input. This thesis presents a comprehensive study of FINUFFT's parameter space through benchmarking and analysis.
+
+We first establish which parameters have the greatest impact on execution time and under what conditions. We then develop a principled method for selecting the spreading parameter $\sigma$, which governs a fundamental trade-off between accuracy and compute cost. Finally, we extend this analysis to the remaining tunable parameters and propose a lightweight heuristic that can predict near-optimal configurations with minimal planning overhead.
+
+The resulting approach reduces the time needed for parameter selection while achieving execution times close to those obtained by exhaustive search, making FINUFFT more accessible for practical high-performance applications.
+
+\vspace{1cm}
+\noindent\textbf{Keywords:} FINUFFT, nonuniform FFT, parameter optimization, performance heuristics, benchmarking

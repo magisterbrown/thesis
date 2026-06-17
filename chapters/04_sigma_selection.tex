@@ -1,0 +1,42 @@
+\chapter{Selecting the Best Sigma Parameter}
+\label{ch:sigma_selection}
+
+\section{Overview}
+
+The oversampling factor $\sigma$ is among the most impactful parameters in FINUFFT. It determines the size of the internal FFT grid relative to the output grid, and thus directly controls the memory footprint, cache behaviour, and compute cost of the transform. This chapter investigates how to select $\sigma$ optimally for a given input configuration and accuracy requirement.
+
+\section{The Role of $\sigma$ in FINUFFT}
+
+The internal grid has size $\sigma N$ along each dimension, where $N$ is the number of output modes. Larger $\sigma$ allows the spreading kernel to achieve the required accuracy with fewer points (smaller $w$), reducing spreading cost, but increases FFT grid size and thus FFT cost. The optimal $\sigma$ balances these two competing costs.
+
+Formally, for a target tolerance $\varepsilon$, the total cost can be approximated as:
+\begin{equation}
+    T(\sigma) \approx T_{\text{spread}}(\sigma, w(\sigma, \varepsilon)) + T_{\text{FFT}}(\sigma N)
+    \label{eq:cost_model}
+\end{equation}
+
+where $w(\sigma, \varepsilon)$ is the minimum kernel width needed to achieve $\varepsilon$ at oversampling $\sigma$.
+
+\section{Empirical Cost Model}
+
+% TODO: describe how T_spread and T_FFT are measured as a function of sigma
+
+\subsection{Measuring Spreading Cost}
+
+% TODO
+
+\subsection{Measuring FFT Cost}
+
+% TODO
+
+\section{Optimal $\sigma$ as a Function of Input}
+
+% TODO: present how optimal sigma varies with N, dimension, tolerance, and hardware
+
+\section{A Heuristic for $\sigma$ Selection}
+
+% TODO: propose and validate a practical heuristic or lookup strategy
+
+\section{Summary}
+
+% TODO: summarize the sigma selection approach and its accuracy/overhead

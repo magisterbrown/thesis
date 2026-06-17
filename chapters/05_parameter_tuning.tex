@@ -1,0 +1,49 @@
+\chapter{Tuning Other Parameters}
+\label{ch:parameter_tuning}
+
+\section{Overview}
+
+With $\sigma$ addressed in the previous chapter, this chapter turns to the remaining tunable parameters. The goal is to develop a unified heuristic that selects near-optimal values for all parameters simultaneously, with low planning overhead.
+
+\section{Parameters Under Consideration}
+
+Beyond $\sigma$, the parameters considered in this chapter are:
+
+\begin{itemize}
+    \item Spreading kernel width $w$ (when not fully determined by $\sigma$ and $\varepsilon$)
+    \item FFT plan strategy (FFTW \texttt{ESTIMATE}, \texttt{MEASURE}, \texttt{PATIENT}, etc.)
+    \item Number of threads
+    \item Chunking and batching parameters for multi-transform execution
+\end{itemize}
+
+\section{FFT Plan Strategy}
+
+\subsection{Trade-off Between Planning Time and Execution Time}
+
+% TODO: measure planning time vs. speedup for different FFTW strategies across input sizes
+
+\subsection{When Is Planning Worth the Cost?}
+
+% TODO: develop a criterion for when to use MEASURE or PATIENT vs ESTIMATE
+
+\section{Threading}
+
+\subsection{Scaling Behaviour}
+
+% TODO: present speedup curves vs. thread count for different input sizes and types
+
+\subsection{Thread Count Selection Heuristic}
+
+% TODO: propose heuristic based on input size and available cores
+
+\section{Batching and Multi-Transform Execution}
+
+% TODO: if applicable, address batching parameters
+
+\section{Combined Heuristic}
+
+% TODO: present the full combined heuristic for all parameters and evaluate it
+
+\section{Summary}
+
+% TODO: summarize findings and transition to conclusion

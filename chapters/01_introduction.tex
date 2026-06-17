@@ -1,0 +1,32 @@
+\chapter{Introduction}
+\label{ch:introduction}
+
+\section{Motivation}
+
+Nonuniform Fast Fourier Transforms (NUFFTs) are central to a wide range of scientific computing applications, including magnetic resonance imaging (MRI) reconstruction, radio astronomy, and molecular dynamics. FINUFFT is a state-of-the-art library for computing type 1, 2, and 3 NUFFTs in one, two, and three dimensions. Despite its strong baseline performance, FINUFFT exposes a number of configuration parameters whose optimal values depend heavily on the input size, dimension, and required accuracy.
+
+Current practice typically relies on default parameter values or manual tuning by expert users, both of which leave significant performance on the table. This thesis investigates the parameter space of FINUFFT systematically to develop heuristics that minimize planning time while approaching optimal execution time.
+
+\section{Research Questions}
+
+This thesis addresses the following research questions:
+
+\begin{enumerate}
+    \item Which FINUFFT configuration parameters have the most significant impact on execution time, and under what input conditions?
+    \item How should the spreading parameter $\sigma$ be selected to balance accuracy and performance for a given input?
+    \item Can a lightweight heuristic be developed that selects near-optimal values for all tunable parameters without incurring significant planning overhead?
+\end{enumerate}
+
+\section{Contributions}
+
+The main contributions of this thesis are:
+
+\begin{itemize}
+    \item A systematic benchmarking study of FINUFFT's parameter space across a representative range of inputs.
+    \item A data-driven method for selecting the $\sigma$ parameter that accounts for accuracy requirements and input characteristics.
+    \item A parameter tuning heuristic that generalizes across input configurations with low planning cost.
+\end{itemize}
+
+\section{Thesis Structure}
+
+Chapter~\ref{ch:background} provides background on NUFFTs and the FINUFFT library. Chapter~\ref{ch:parameter_importance} explores which parameters matter most. Chapter~\ref{ch:sigma_selection} develops the $\sigma$ selection method. Chapter~\ref{ch:parameter_tuning} addresses tuning the remaining parameters. Chapter~\ref{ch:conclusion} concludes and discusses future work.

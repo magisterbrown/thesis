@@ -1,0 +1,33 @@
+\chapter{Background}
+\label{ch:background}
+
+\section{Nonuniform Fast Fourier Transforms}
+
+The standard Discrete Fourier Transform (DFT) operates on uniformly sampled data. Many practical applications, however, involve data sampled at irregular (nonuniform) locations. The Nonuniform Fast Fourier Transform (NUFFT) generalizes the FFT to handle such data efficiently.
+
+Three types of NUFFT are commonly distinguished:
+\begin{itemize}
+    \item \textbf{Type 1 (nonuniform to uniform):} transforms from nonuniform source points to a uniform Fourier grid.
+    \item \textbf{Type 2 (uniform to nonuniform):} evaluates a Fourier series at nonuniform target points.
+    \item \textbf{Type 3 (nonuniform to nonuniform):} transforms between nonuniform source and target points.
+\end{itemize}
+
+\section{FINUFFT}
+
+FINUFFT~\citep{barnett2019} is an open-source library implementing highly optimized NUFFTs using the \emph{spreading} (gridding and interpolation) approach. The algorithm proceeds in three stages: (1) spreading nonuniform points onto an oversampled uniform grid using a compact kernel, (2) applying a standard FFT, and (3) deconvolving by dividing out the kernel's Fourier transform.
+
+\subsection{Key Configuration Parameters}
+
+FINUFFT exposes several parameters that control the accuracy-performance trade-off:
+
+\begin{description}
+    \item[$\sigma$ (oversampling factor)] Controls the ratio of the internal FFT grid size to the output size. Higher $\sigma$ increases accuracy but raises memory and compute cost.
+    \item[Spreading kernel width ($w$)] Determines how many grid points each source point contributes to. Wider kernels yield higher accuracy.
+    \item[Tolerance ($\varepsilon$)] The requested relative error, which implicitly constrains $w$ and $\sigma$.
+    \item[FFT backend] Choice of FFT implementation (e.g., FFTW plan strategy).
+    \item[Threading parameters] Number of threads and thread scheduling for the spread and FFT stages.
+\end{description}
+
+\section{Related Work}
+
+% TODO: survey prior work on NUFFT parameter selection, autotuning, and benchmarking
