@@ -5,7 +5,7 @@
 
 Nonuniform Fast Fourier Transforms (NUFFTs) are central to a wide range of scientific computing applications, including magnetic resonance imaging (MRI) reconstruction, radio astronomy, and molecular dynamics. FINUFFT is a state-of-the-art library for computing type 1, 2, and 3 NUFFTs in one, two, and three dimensions. Despite its strong baseline performance, FINUFFT exposes a number of configuration parameters whose optimal values depend heavily on the input size, dimension, and required accuracy.
 
-Current practice typically relies on default parameter values or manual tuning by expert users, both of which leave significant performance on the table. This thesis investigates the parameter space of FINUFFT systematically to develop heuristics that minimize planning time while approaching optimal execution time.
+Current practice typically relies on default parameter values or manual tuning by expert users, both of which leave significant performance on the table. Furthermore, several parameters that influence performance are not exposed to the user at all, instead being fixed to compile-time or runtime defaults determined without regard to the specific input. This thesis investigates the parameter space of FINUFFT systematically, covering both its tunable and its hardcoded parameters, to develop heuristics that minimize planning time while approaching optimal execution time.
 
 \section{Research Questions}
 

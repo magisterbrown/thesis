@@ -3,19 +3,13 @@
 
 \section{Overview}
 
-The oversampling factor $\sigma$ is among the most impactful parameters in FINUFFT. It determines the size of the internal FFT grid relative to the output grid, and thus directly controls the memory footprint, cache behaviour, and compute cost of the transform. This chapter investigates how to select $\sigma$ optimally for a given input configuration and accuracy requirement.
+The upsampling factor $\sigma$ is among the most impactful parameters in FINUFFT. It determines the size of the internal FFT grid relative to the output grid, and thus directly controls the memory footprint, cache behaviour, and compute cost of the transform. This chapter investigates how to select $\sigma$ optimally for a given input configuration and accuracy requirement.
 
 \section{The Role of $\sigma$ in FINUFFT}
 
-The internal grid has size $\sigma N$ along each dimension, where $N$ is the number of output modes. Larger $\sigma$ allows the spreading kernel to achieve the required accuracy with fewer points (smaller $w$), reducing spreading cost, but increases FFT grid size and thus FFT cost. The optimal $\sigma$ balances these two competing costs.
+The upsampling factor $\sigma$ controls the size of the internal uniform FFT grid, which has $\sigma N$ points per dimension relative to the $N$ requested output modes. Increasing $\sigma$ enlarges the FFT grid, raising FFT cost, but simultaneously relaxes the accuracy requirement on the spreading kernel, permitting a smaller kernel half-width $w$. Because $w$ decreases and the grid size increases as $\sigma$ grows, there exists a value of $\sigma$ that minimises total transform cost for a given problem size, dimension, and tolerance.
 
-Formally, for a target tolerance $\varepsilon$, the total cost can be approximated as:
-\begin{equation}
-    T(\sigma) \approx T_{\text{spread}}(\sigma, w(\sigma, \varepsilon)) + T_{\text{FFT}}(\sigma N)
-    \label{eq:cost_model}
-\end{equation}
-
-where $w(\sigma, \varepsilon)$ is the minimum kernel width needed to achieve $\varepsilon$ at oversampling $\sigma$.
+\section{Sigma lower bound}
 
 \section{Empirical Cost Model}
 
@@ -23,19 +17,27 @@ where $w(\sigma, \varepsilon)$ is the minimum kernel width needed to achieve $\v
 
 \subsection{Measuring Spreading Cost}
 
-% TODO
+The spreading step accumulates contributions from each of the $M$ non-uniform source points onto a $w^d$ neighbourhood of grid cells. The minimum kernel half-width $w$ required to achieve tolerance $\varepsilon$ at upsampling $\sigma$ in $d$ dimensions is
+\begin{equation}
+    w = \left\lceil \frac{\log\!\left(\dfrac{0.18 \cdot 1.4^{d-1}}{\varepsilon}\right)}{\pi \sqrt{1 - 1/\sigma}} + 1 \right\rceil.
+    \label{eq:kernel_width}
+\end{equation}
+The theoretical spreading cost is therefore proportional to $M w^d$. In practice the inner loop is vectorised, so the per-point work scales as $\lceil w / W_{\mathrm{simd}} \rceil \cdot w^{d-1}$, where $W_{\mathrm{simd}}$ is the SIMD vector width in grid points.
 
 \subsection{Measuring FFT Cost}
 
-% TODO
+The FFT operates on the upsampled grid of total size $\tilde{N} = \mathrm{next235}(\sigma N)^d$, where $\mathrm{next235}(x)$ denotes the smallest integer $\geq x$ whose only prime factors are $2$, $3$, and $5$. Rounding up to such a highly composite number ensures the FFT can be decomposed into small radix-2, -3, and -5 butterflies, which most FFT libraries handle efficiently. The grid contributes $\mathcal{O}(\tilde{N} \log \tilde{N})$ operations, though the precise constant depends on the chosen FFT backend and cache effects, so this estimate is best treated as an asymptotic guide.
 
 \section{Optimal $\sigma$ as a Function of Input}
 
-% TODO: present how optimal sigma varies with N, dimension, tolerance, and hardware
+The total transform cost is the sum of both contributions,
+\begin{equation}
+    T(\sigma) \;\approx\; M\, w(\sigma,\varepsilon)^d \;+\; \gamma\, \tilde{N}(\sigma)\log \tilde{N}(\sigma),
+    \label{eq:cost_model}
+\end{equation}
+where $\gamma = C_{\mathrm{FFT}} / C_{\mathrm{spread}}$ is a single hardware-dependent constant expressing the relative cost of one FFT butterfly versus one spreading operation. Since only the ratio matters for finding the optimal $\sigma$, the overall scale cancels.
 
 \section{A Heuristic for $\sigma$ Selection}
-
-% TODO: propose and validate a practical heuristic or lookup strategy
 
 \section{Summary}
 
