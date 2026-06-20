@@ -15,7 +15,7 @@ The upsampling factor $\sigma$ controls the size of the internal uniform FFT gri
 
 % TODO: describe how T_spread and T_FFT are measured as a function of sigma
 
-\subsection{Measuring Spreading Cost}
+\subsection{Estimating Spreading Cost}
 
 The spreading step accumulates contributions from each of the $M$ non-uniform source points onto a $w^d$ neighbourhood of grid cells. The minimum kernel half-width $w$ required to achieve tolerance $\varepsilon$ at upsampling $\sigma$ in $d$ dimensions is
 \begin{equation}
@@ -24,7 +24,7 @@ The spreading step accumulates contributions from each of the $M$ non-uniform so
 \end{equation}
 The theoretical spreading cost is therefore proportional to $M w^d$. In practice the inner loop is vectorised, so the per-point work scales as $\lceil w / W_{\mathrm{simd}} \rceil \cdot w^{d-1}$, where $W_{\mathrm{simd}}$ is the SIMD vector width in grid points.
 
-\subsection{Measuring FFT Cost}
+\subsection{Estimating FFT Cost}
 
 The FFT operates on the upsampled grid of total size $\tilde{N} = \mathrm{next235}(\sigma N)^d$, where $\mathrm{next235}(x)$ denotes the smallest integer $\geq x$ whose only prime factors are $2$, $3$, and $5$. Rounding up to such a highly composite number ensures the FFT can be decomposed into small radix-2, -3, and -5 butterflies, which most FFT libraries handle efficiently. The grid contributes $\mathcal{O}(\tilde{N} \log \tilde{N})$ operations, though the precise constant depends on the chosen FFT backend and cache effects, so this estimate is best treated as an asymptotic guide.
 
@@ -38,6 +38,106 @@ The total transform cost is the sum of both contributions,
 where $\gamma = C_{\mathrm{FFT}} / C_{\mathrm{spread}}$ is a single hardware-dependent constant expressing the relative cost of one FFT butterfly versus one spreading operation. Since only the ratio matters for finding the optimal $\sigma$, the overall scale cancels.
 
 \section{A Heuristic for $\sigma$ Selection}
+% TODO: move google benchmark to a separate section.
+
+All timing measurements in this chapter were collected using Google Benchmark~\cite{googlebenchmark}. Google Benchmark provides statistical rigor by running each fixture repeatedly and reporting mean and standard deviation, automatically discarding warm-up iterations and compensating for clock resolution. It also integrates with hardware performance counters, enabling cycle-accurate comparisons across configurations. These properties make it well-suited for the fine-grained measurements of spreading and FFT cost required here.
+
+\subsection{Validating the Spreading Cost Model}
+
+To validate the $w^d$ scaling predicted by the model, spreading time was measured across one and two dimensions for a range of $\sigma$ values at tolerance $\varepsilon = 10^{-6}$. As shown in Figures~\ref{fig:spreading_1d} and~\ref{fig:spreading_2d}, the theoretical curves follow the same trajectory as the measurements, including the location of the minimum. This confirms that the model can be used to identify the value of $\sigma$ that minimises spreading cost without exhaustive profiling.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/spreading/1d1e-6d.pdf}
+        \caption{1D}
+        \label{fig:spreading_1d}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/spreading/2d1e-06d.pdf}
+        \caption{2D}
+        \label{fig:spreading_2d}
+    \end{subfigure}
+    \caption{Spreading cost versus $\sigma$ at $\varepsilon = 10^{-6}$. The solid line is the prediction from \eqref{eq:kernel_width}; points are measured timings.}
+    \label{fig:spreading_validation}
+\end{figure}
+
+\subsection{Fitting the Balancing Constant $\gamma$}
+
+The balancing constant $\gamma$ is the only free parameter in the cost model~\eqref{eq:cost_model}; it encodes the relative throughput of the FFT and spreading kernels on a given machine. Because this ratio is hardware-dependent and not analytically available, $\gamma$ must be calibrated empirically.
+
+Seven parameter combinations were selected for the calibration benchmarks, covering a representative cross-section of real-world workloads. The combinations were drawn from FINUFFT's GitHub issue tracker and discussion threads, where users report the tolerance, dimension, and floating-point precision that characterise their applications. The chosen combinations are listed in Table~\ref{tab:gamma_configs}.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{cccc}
+        \hline
+        \textbf{ID} & \textbf{Dimension} & \textbf{Tolerance} & \textbf{Precision} \\
+        \hline
+        1 & 1D & $10^{-8}$ & double \\
+        2 & 1D & $10^{-3}$ & float  \\
+        3 & 2D & $10^{-8}$ & double \\
+        4 & 2D & $10^{-4}$ & float  \\
+        5 & 2D & $10^{-4}$ & float  \\
+        6 & 3D & $10^{-6}$ & double \\
+        7 & 3D & $10^{-6}$ & double \\
+        \hline
+    \end{tabular}
+    \caption{Parameter combinations used for $\gamma$ calibration.}
+    \label{tab:gamma_configs}
+\end{table}
+
+For each combination, the transform was benchmarked at four non-uniform point densities $\rho \in \{0.5, 1, 10, 100\}$, where $\rho = M / N$ is the ratio of non-uniform source points to output modes. This range spans regimes from sparse inputs, where spreading dominates, to dense inputs, where the FFT cost becomes comparable. The transform execution time was measured with Google Benchmark for upsampling factors $\sigma \in [1.25, 2.00]$ in steps of $0.05$, yielding a timing curve per density per configuration. A representative selection of these curves is shown in Figure~\ref{fig:all_results}.
+                            
+
+
+Due to limited computational resources, each $(\sigma, \rho)$ combination was measured only a small number of times. This made the raw timing curves susceptible to transient outliers caused by OS scheduling, cache interference, and other system noise. To reduce this effect, a 3-point median filter was applied to each timing curve along the $\sigma$ axis before any further analysis. Median smoothing was preferred over averaging because it suppresses isolated spikes without distorting the location of the minimum, which is the quantity of interest. Figure~\ref{fig:smoothing} illustrates the effect: the raw curve exhibits several sharp spikes, while the smoothed curve preserves the overall shape and the position for the optimal $\sigma$ fitting.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/smoothing.pdf}
+    \caption{Effect of 3-point median smoothing on a raw timing curve.}
+    \label{fig:smoothing}
+\end{figure}
+
+Each benchmark run recorded three quantities as a function of $\sigma$: the spreading complexity $S(\sigma) = M w(\sigma, \varepsilon)^d$, the FFT complexity $F(\sigma) = \tilde{N}(\sigma) \log \tilde{N}(\sigma)$, and the smoothed measured time $\hat{T}(\sigma)$. All three are overlaid in Figure~\ref{fig:all_results}. The goal of the fitting procedure is to find the value of $\gamma$ for which the model sum $S(\sigma) + \gamma F(\sigma)$ attains its minimum at the same $\sigma$ as the real measurement.
+
+The loss for a single $(\text{config},\rho)$ pair is defined as follows. Let $\sigma^*_{\text{model}} = \arg\min_\sigma \bigl[S(\sigma) + \gamma F(\sigma)\bigr]$ be the $\sigma$ selected by the model, and let $\sigma^*_{\text{meas}} = \arg\min_\sigma \hat{T}(\sigma)$ be the empirically optimal $\sigma$. The error is the difference in measured time between these two points,
+\begin{equation}
+    \ell(\gamma) = \hat{T}(\sigma^*_{\text{model}}) - \hat{T}(\sigma^*_{\text{meas}}),
+    \label{eq:gamma_loss}
+\end{equation}
+which is zero when the model chooses the true optimum and positive when it selects a suboptimal $\sigma$. Figure~\ref{fig:gamma_error} illustrates this loss for a single density before any tuning, i.e.\ with $\gamma = 1$, showing the duration between the model-predicted and empirically optimal $\sigma$.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/error.pdf}
+    \caption{Error between the real time measurement and the complexity prediction as a function of the upsampling factor $\sigma$.}
+    \label{fig:gamma_error}
+\end{figure}
+
+To find the optimal $\gamma$, the total loss (summed in squares over all configurations and densities) is minimised by a two-stage sweep: a coarse logarithmic scan over $[10^{-3}, 10^{3}]$ to locate the approximate minimum, followed by a fine linear scan in a neighbourhood of that point.
+The fitting procedure yields $\gamma = 16.075$. Figure~\ref{fig:all_results} shows the resulting predicted complexity $S(\sigma) + \gamma F(\sigma)$ overlaid on the timing curves for some configurations and density, confirming that the model minimum is close to the measured minimum across the benchmark set.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{figures/result.pdf}
+    \caption{Representative timing curves: measured transform time versus $\sigma$ for a subset of parameter combinations and densities.}
+    \label{fig:all_results}
+\end{figure}
+
+
+
+\subsection{Deriving the Heuristic}
+
+% TODO: minimise T(sigma) analytically or numerically; present the resulting heuristic rule or lookup
+
+\subsection{Validation Against Optimal}
+
+% TODO: compare heuristic-selected sigma against exhaustive search across representative inputs
 
 \section{Summary}
 
