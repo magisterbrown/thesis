@@ -11,9 +11,9 @@ The upsampling factor $\sigma$ controls the size of the internal uniform FFT gri
 
 \section{Sigma lower bound}
 
-\section{Empirical Cost Model}
 
-% TODO: describe how T_spread and T_FFT are measured as a function of sigma
+\section{Current Heuristic for $\sigma$ Selection}
+The current FINUFFT heuristic for $\sigma$ selection is a simple lookup: it returns one of only two possible values, $\sigma \in \{1.25, 2.00\}$. By default it returns $1.25$, but switches to $2.00$ when the point density $\rho = M/N$ exceeds a fixed threshold. All upsampling factors in between are never considered, even though the true optimal $\sigma$ for a given problem often lies in the interior of $[1.25, 2.00]$.
 
 \subsection{Estimating Spreading Cost}
 
@@ -38,8 +38,8 @@ The total transform cost is the sum of both contributions,
 where $\gamma = C_{\mathrm{FFT}} / C_{\mathrm{spread}}$ is a single hardware-dependent constant expressing the relative cost of one FFT butterfly versus one spreading operation. Since only the ratio matters for finding the optimal $\sigma$, the overall scale cancels.
 
 \section{A Heuristic for $\sigma$ Selection}
-% TODO: move google benchmark to a separate section.
 
+\section{Experimental Setup}
 All timing measurements in this chapter were collected using Google Benchmark~\cite{googlebenchmark}. Google Benchmark provides statistical rigor by running each fixture repeatedly and reporting mean and standard deviation, automatically discarding warm-up iterations and compensating for clock resolution. It also integrates with hardware performance counters, enabling cycle-accurate comparisons across configurations. These properties make it well-suited for the fine-grained measurements of spreading and FFT cost required here.
 
 \subsection{Validating the Spreading Cost Model}
@@ -131,6 +131,7 @@ The fitting procedure yields $\gamma = 16.075$. Figure~\ref{fig:all_results} sho
 
 \subsection{Validation Against Baseline}
 
+Table~\ref{tab:improvement} reports the relative change in execution time for input configurations where the old and new heuristics select a different $\sigma$. Both best and worst cases are included. The best cases show larger gains, while the worst cases exhibit only modest regressions, suggesting that the new heuristic produces a net improvement overall.
 \begin{table}[h]
     \centering
     \small
