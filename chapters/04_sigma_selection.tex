@@ -75,15 +75,15 @@ Seven parameter combinations were selected for the calibration benchmarks, cover
     \centering
     \begin{tabular}{cccc}
         \hline
-        \textbf{ID} & \textbf{Dimension} & \textbf{Tolerance} & \textbf{Precision} \\
+        \textbf{Dimension} & \textbf{Tolerance} & \textbf{Precision} \\
         \hline
-        1 & 1D & $10^{-8}$ & double \\
-        2 & 1D & $10^{-3}$ & float  \\
-        3 & 2D & $10^{-8}$ & double \\
-        4 & 2D & $10^{-4}$ & float  \\
-        5 & 2D & $10^{-4}$ & float  \\
-        6 & 3D & $10^{-6}$ & double \\
-        7 & 3D & $10^{-6}$ & double \\
+        1D & $10^{-8}$ & double \\
+        1D & $10^{-3}$ & float  \\
+        2D & $10^{-8}$ & double \\
+        2D & $10^{-4}$ & float  \\
+        2D & $10^{-4}$ & float  \\
+        3D & $10^{-6}$ & double \\
+        3D & $10^{-6}$ & double \\
         \hline
     \end{tabular}
     \caption{Parameter combinations used for $\gamma$ calibration.}
@@ -129,14 +129,27 @@ The fitting procedure yields $\gamma = 16.075$. Figure~\ref{fig:all_results} sho
     \label{fig:all_results}
 \end{figure}
 
+\subsection{Validation Against Baseline}
 
-
-\subsection{Deriving the Heuristic}
-
-% TODO: minimise T(sigma) analytically or numerically; present the resulting heuristic rule or lookup
-
-\subsection{Validation Against Optimal}
-
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{ccccccc}
+        \hline
+        \textbf{Dimension} & \textbf{Tolerance} & \textbf{Precision} & \textbf{Density} & \textbf{Old $\sigma$} & \textbf{New $\sigma$} & \textbf{Improvement} \\
+        \hline
+        \multicolumn{7}{l}{\textit{Best cases}} \\
+        3D & $10^{-6}$ & double & 0.5 & 1.25 & 1.55  & 40\%  \\
+        2D & $10^{-8}$ & double & 1.0 & 1.25 & 1.35  & 14.8\%\\
+        1D & $10^{-3}$ & float & 100.0 & 1.25 & 1.45 & 14.7\% \\
+        \multicolumn{7}{l}{\textit{Worst cases}} \\
+        2D & $10^{-8}$ & double& 10.0 & 2.00 & 1.9 & -7.5\% \\
+        2D & $10^{-4}$ & float & 10.0 & 1.25 & 1.7 & -8.9\% \\
+        \hline
+    \end{tabular}
+    \caption{Relative performance change}
+    \label{tab:improvement}
+\end{table}
 % TODO: compare heuristic-selected sigma against exhaustive search across representative inputs
 
 \section{Summary}
