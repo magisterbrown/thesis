@@ -7,36 +7,102 @@
 
 \section{Parameters Under Consideration}
 
-% Beyond $\sigma$, the parameters considered in this chapter are:
+Beyond $\sigma$, which was treated in Chapter~\ref{ch:sigma_selection},  further parameters govern the performance of FINUFFT: the maximum subproblem size, bin size
 
-% \begin{itemize}
-%     \item Spreading kernel width $w$ (when not fully determined by $\sigma$ and $\varepsilon$)
-%     \item FFT plan strategy (FFTW \texttt{ESTIMATE}, \texttt{MEASURE}, \texttt{PATIENT}, etc.)
-%     \item Number of threads
-%     \item Chunking and batching parameters for multi-transform execution
-% \end{itemize}
+\section{Maximum Subproblem Size}
 
-\section{FFT Plan Strategy}
+During the spreading phase, nonuniform points are partitioned into spatially localised subproblems so that each subproblem's contribution to the fine grid can be accumulated independently. The parameter $S_{\max}$ (exposed in the FINUFFT interface as \texttt{max\_subproblem\_size}) sets an upper bound on the number of nonuniform points assigned to any single subproblem.
 
-\subsection{Trade-off Between Planning Time and Execution Time}
+A larger $S_{\max}$ reduces the total number of subproblems, thereby lowering scheduling and synchronisation overhead. However, if subproblems are too large relative to the number of available threads, work is distributed unevenly and some threads may sit idle while others finish their chunk, reducing parallel efficiency.
 
-% TODO: measure planning time vs. speedup for different FFTW strategies across input sizes
+$S_{\max}$ also determines the size of the fine-grid subregion that each subproblem writes to, and ideally this subgrid should fit within L2 or L3 cache. The cache footprint, however, depends not only on $S_{\max}$ but also on the bin size used during the sorting step, so the two parameters are best tuned in conjunction.
+\subsection{Experimental Evaluation}
+To assess the impact of $S_{\max}$, we evaluate it under two point distributions: uniform, where points are drawn independently from a uniform distribution over the domain, and exponential, where points are clustered around the 0 with density falling off exponentially. Under a uniform distribution the nonuniform points spread evenly across bins, so each subproblem's contributing subgrid remains compact and roughly constant in size. 
+Under an exponential distribution, the majority of points concentrate near the origin, so most bins are densely populated and the subgrid each subproblem must write to is small and spatially compact. However, the tails of the distribution place a small number of points far from the centre; these scattered points fall into bins that are spread across the domain, producing a handful of subproblems whose contributing subgrid spans a disproportionately large region. The resulting variance in subgrid size means that a value of $S_{\max}$ that is well-suited to the dense core may be inadequate for the outlying subproblems, and vice versa.
 
-\subsection{When Is Planning Worth the Cost?}
+This distinction matters because real-world applications often process clustered data. In interferometric radio astronomy, for example, \texttt{fftvis}~\cite{fftvis} uses FINUFFT to compute visibilities from antenna pairs. Short baselines between nearby antennas produce many closely spaced measurement points, while long baselines between distant antennas produce only a few points spread far apart. The resulting data therefore has dense clusters alongside sparse outliers, which is precisely the structure that an exponential distribution models.
+\subsection{Experimental Results}
 
-% TODO: develop a criterion for when to use MEASURE or PATIENT vs ESTIMATE
+Figures~\ref{fig:maxsp_uniform} and~\ref{fig:maxsp_exponential} show throughput as a function of $S_{\max}$ for a problem of $M = 10^8$ nonuniform points under the uniform and exponential distributions respectively. In both cases throughput rises steadily as $S_{\max}$ increases from small values up to approximately $10^5$, reflecting the reduction in scheduling and synchronisation overhead described above. Beyond $10^5$ the curve flattens: subproblems are large enough that per-subproblem overhead is negligible and additional increases in $S_{\max}$ yield no further gain. Above $S_{\max} \approx 10^6$ throughput becomes noisy, with run-to-run variance increasing noticeably. At this scale individual subproblems are large enough that load imbalance becomes significant: threads that are assigned a denser or geometrically larger subproblem take substantially longer to finish, leaving other threads idle and reducing effective utilisation.
 
-\section{Threading}
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/max_sp_size/uniform.pdf}
+        \caption{Uniform distribution.}
+        \label{fig:maxsp_uniform}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/max_sp_size/exponential.pdf}
+        \caption{Exponential distribution.}
+        \label{fig:maxsp_exponential}
+    \end{subfigure}
+    \caption{Throughput vs.\ $S_{\max}$ for $M = 10^8$ nonuniform points.}
+    \label{fig:maxsp}
+\end{figure}
 
-\subsection{Scaling Behaviour}
+The results suggest a simple heuristic for selecting $S_{\max}$: distributing the workload evenly across threads while keeping subproblems above the threshold at which scheduling overhead becomes significant. Concretely, we propose
+\begin{equation}
+    S_{\max} = \max\!\left(10^4,\; \frac{M}{10\,T}\right),
+    \label{eq:smax_heuristic}
+\end{equation}
+where $M$ is the total number of nonuniform points and $T$ is the number of threads. 
+The factor of $10$ provides sufficient granularity for the scheduler to balance load without generating so many subproblems that overhead dominates. 
+The floor of $10^4$ prevents degenerate cases where $M$ or $T$ is small from producing subproblems that are too fine-grained to be efficient.
 
-% TODO: present speedup curves vs. thread count for different input sizes and types
 
-\subsection{Thread Count Selection Heuristic}
+%Default
+%------------------------------------------------------------------------------------------------------------------
+%Benchmark                                                                        Time             CPU   Iterations
+%------------------------------------------------------------------------------------------------------------------
+%finufft/type=1/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5    104004213 ns     96360834 ns            5
+%finufft/type=1/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5    111742370 ns    100082484 ns            5
+%finufft/type=1/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   101438345 ns     78884176 ns            5
+%finufft/type=1/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    140437073 ns    120852650 ns            5
+%finufft/type=1/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   104703467 ns     95487879 ns            5
+%finufft/type=1/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  330611688 ns    280772805 ns            5
+%finufft/type=2/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5     20235265 ns     14743314 ns            5
+%finufft/type=2/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5     29665516 ns     23004649 ns            5
+%finufft/type=2/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   185175170 ns    171538120 ns            5
+%finufft/type=2/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    184318504 ns    168588415 ns            5
+%finufft/type=2/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   196846679 ns    192807557 ns            5
+%finufft/type=2/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  379893409 ns    296984258 ns            5
+%finufft/type=3/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5    130139967 ns    122385355 ns            5
+%finufft/type=3/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5    218484393 ns    203626536 ns            5
+%finufft/type=3/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   156514883 ns    146343491 ns            5
+%finufft/type=3/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    278288680 ns    248954919 ns            5
+%finufft/type=3/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   156417141 ns    140340727 ns            5
+%finufft/type=3/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  407662669 ns    360908459 ns            5
 
-% TODO: propose heuristic based on input size and available cores
 
-\section{Batching and Multi-Transform Execution}
+%Modification
+%------------------------------------------------------------------------------------------------------------------
+%Benchmark                                                                        Time             CPU   Iterations
+%------------------------------------------------------------------------------------------------------------------
+
+%finufft/type=1/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5    111249222 ns     92240226 ns            5
+%finufft/type=1/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5    114176635 ns    104217535 ns            5
+%finufft/type=1/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   111959182 ns    108849248 ns            5
+%finufft/type=1/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    134733689 ns    131296817 ns            5
+%finufft/type=1/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5    92037026 ns     88242083 ns            5
+%finufft/type=1/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  322889396 ns    281542658 ns            5
+%finufft/type=2/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5     21633073 ns     16684396 ns            5
+%finufft/type=2/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5     30017880 ns     23101229 ns            5
+%finufft/type=2/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   295619691 ns    291823505 ns            5
+%finufft/type=2/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    207446423 ns    201381551 ns            5
+%finufft/type=2/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   281055092 ns    265416361 ns            5
+%finufft/type=2/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  382937961 ns    328399410 ns            5
+%finufft/type=3/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5    118837882 ns    110321468 ns            5
+%finufft/type=3/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5    209167666 ns    187193889 ns            5
+%finufft/type=3/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   144153962 ns    131839122 ns            5
+%finufft/type=3/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    297292928 ns    265495010 ns            5
+%finufft/type=3/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   143055531 ns    130515694 ns            5
+%finufft/type=3/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  399080786 ns    362673250 ns            5
+
+
 
 % TODO: if applicable, address batching parameters
 
