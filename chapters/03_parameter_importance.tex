@@ -3,6 +3,87 @@
 
 \section{Overview}
 
-Before attempting to optimize FINUFFT's parameters, it is necessary to understand which parameters actually matter and to what degree. This chapter presents a systematic sensitivity analysis of FINUFFT's configuration space. We vary each parameter independently while holding others fixed, and measure the resulting effect on execution time across a representative range of inputs.
+Before attempting to optimize FINUFFT's parameters, it is necessary to understand which parameters actually matter and to what degree. This chapter presents a systematic sensitivity analysis of FINUFFT's configuration space. We vary each parameter independently while holding others fixed, and measure the resulting effect on execution time across a representative range of inputs. We first identify where transform time is actually spent across the three transform types (Section~\ref{sec:stage_breakdown}), then use a global, Gaussian process based search to rank the tunable parameters by their contribution to performance (Section~\ref{sec:gp_sensitivity}). The resulting ranking motivates the choice of parameters treated in depth in Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning}.
 
+\section{FINUFFT's Configuration Parameters}
 
+FINUFFT exposes its tunable behaviour through a single options structure called \texttt{finufft\_opts}. Its fields fall into three groups. Data handling options (\texttt{modeord}, \texttt{spreadinterponly}) change the convention used to order output modes or restrict the call to spreading/interpolation only, and do not by themselves change the amount of work performed. Diagnostic options (\texttt{debug}, \texttt{spread\_debug}, \texttt{showwarn}) control logging and are irrelevant to performance. The remaining, performance relevant options are:
+\begin{itemize}
+    \item \texttt{nthreads}: number of threads used for the transform.
+    \item \texttt{fftw}: planner flags passed to FFTW, trading planning time for potentially faster plans.
+    \item \texttt{spread\_sort}: whether nonuniform points are sorted before spreading (\texttt{0} off, \texttt{1} on, \texttt{2} heuristic choice).
+    \item \texttt{upsampfac}: the upsampling factor $\sigma$, treated in depth in Chapter~\ref{ch:sigma_selection}.
+    \item \texttt{spread\_thread} and \texttt{maxbatchsize}: control how work is split across threads when multiple strength vectors share the same nonuniform points (vectorized calls, $n_{\mathrm{tr}} > 1$).
+    \item \texttt{spread\_nthr\_atomic}: thread count above which the spreader switches from an OpenMP critical section to atomic updates.
+    \item \texttt{spread\_max\_sp\_size}: the maximum subproblem size used by the spreader, treated in depth in Chapter~\ref{ch:parameter_tuning}.
+\end{itemize}
+Two further fields, \texttt{spread\_kerevalmeth} and \texttt{spread\_kerpad}, are retained only for binary compatibility and have no effect on current versions of the library. A third, \texttt{spread\_kerformula}, is reserved for internal debugging. All three are therefore excluded from the analysis that follows.
+
+\section{Where Does Time Go? Stage-Level Breakdown}
+\label{sec:stage_breakdown}
+
+Every FINUFFT call proceeds through three stages, introduced in Chapter~\ref{ch:background}: \texttt{makeplan}, which precomputes kernel coefficients and creates the FFTW plan; \texttt{setpts}, which sorts and preprocesses the nonuniform points; and \texttt{execute}, which performs the actual spreading, FFT, and deconvolution. Before deciding which configuration parameters deserve attention, it is useful to know how much of the total runtime each stage typically accounts for, since a parameter that only affects a negligible stage cannot meaningfully improve overall performance.
+
+Using the benchmark configurations distributed with FINUFFT (covering a range of precisions, tolerances, dimensions, and both extremal values of $\sigma$), each call was timed and the three stage durations were normalised so that they summed to one. Figure~\ref{fig:stage_breakdown} shows the resulting distribution, split by transform type. For type 1 and type 2 transforms, \texttt{execute} dominates, accounting for the large majority of the total time, while \texttt{setpts} contributes a smaller but non-negligible share and \texttt{makeplan} is close to zero in almost every case. Type 3 transforms show a markedly different balance: \texttt{setpts} and \texttt{execute} contribute comparable shares, reflecting the additional preprocessing type 3 transforms require to handle nonuniform points on both sides of the transform.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/parameter_importance/stage_breakdown.pdf}
+    \caption{Fraction of total call time spent in each stage (\texttt{makeplan}, \texttt{setpts}, \texttt{execute}), by transform type.}
+    \label{fig:stage_breakdown}
+\end{figure}
+
+This picture was refined further by instrumenting \texttt{setpts} itself, splitting it into its constituent substeps: precomputing kernel Horner coefficients, evaluating the kernel Fourier series used for deconvolution, and creating the FFTW plan. These substeps behave largely as fixed, per-call overheads rather than costs that scale with the number of nonuniform points $M$, which is consistent with \texttt{makeplan} and the fixed portion of \texttt{setpts} contributing a shrinking fraction of total time as $M$ grows.
+
+Together, these observations indicate that parameters affecting the \texttt{execute} stage, and specifically the spreading and FFT steps within it, offer the largest potential impact on performance, with parameters affecting \texttt{setpts} becoming relevant mainly for type 3 transforms or when $M$ is small enough that fixed overheads are not amortised.
+
+\section{Global Sensitivity Analysis via Gaussian-Process Optimization}
+\label{sec:gp_sensitivity}
+
+Stage-level timing shows which stage costs time, but not which of the many configuration parameters within that stage is responsible, nor how the parameters interact. To rank the parameters directly, a Gaussian process based optimizer (as implemented in Optuna~\cite{optuna2019}) was used to search the joint space of \texttt{spread\_sort}, \texttt{upsampfac}, \texttt{spread\_max\_sp\_size}, \texttt{spread\_nthr\_atomic}, \texttt{spread\_thread}, and \texttt{maxbatchsize}, minimising the measured execution time of a single representative, vectorized transform (multiple simultaneous strength vectors, $n_{\mathrm{tr}} > 1$, so that \texttt{spread\_thread} and \texttt{maxbatchsize} could take effect). \texttt{nthreads} was fixed to the number of hardware threads available on the benchmarking machine, and the FFTW planner flag and the internal kernel formula selector were left out of the search, as neither is intended to be tuned per call.
+
+With the best configuration found by the optimizer, the transform completed in 290\,ms, compared to 643\,ms under FINUFFT's default configuration, a 55\% reduction in execution time. Table~\ref{tab:gp_best} lists the parameter values that achieved this result. Figure~\ref{fig:gp_histogram} shows the distribution of execution times across all completed trials, with the default configuration's time marked for reference; the best trial lies far in the tail of the distribution, indicating that most randomly sampled configurations perform considerably worse than either the default or the optimum.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{llp{6cm}}
+        \hline
+        \textbf{Parameter} & \textbf{Best value found} & \textbf{Note} \\
+        \hline
+        \texttt{spread\_sort}         & 1 (on)  & matches default heuristic outcome for this input \\
+        \texttt{upsampfac}            & 1.90    & between the two hard-coded defaults $\{1.25, 2.00\}$ \\
+        \texttt{spread\_max\_sp\_size}& 1301    & well below the library default of $10^5$ for this input \\
+        \texttt{spread\_nthr\_atomic} & 64      & \\
+        \texttt{spread\_thread}       & 2       & only relevant for vectorized calls \\
+        \texttt{maxbatchsize}         & 1       & only relevant for vectorized calls \\
+        \hline
+    \end{tabular}
+    \caption{Parameter values of the best configuration found by the Gaussian process search.}
+    \label{tab:gp_best}
+\end{table}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.65\textwidth]{figures/parameter_importance/optuna_histogram.pdf}
+    \caption{Distribution of measured execution times across completed optimizer trials, with the default configuration's time marked for reference.}
+    \label{fig:gp_histogram}
+\end{figure}
+
+To quantify the relative contribution of each parameter, functional ANOVA importance scores were computed from the completed trials. Figure~\ref{fig:importance} shows the result. \texttt{spread\_sort} accounts for the majority of the variance in execution time, followed by \texttt{spread\_max\_sp\_size}; together they explain over 95\% of the measured variance across trials. \texttt{maxbatchsize}, \texttt{upsampfac}, \texttt{spread\_nthr\_atomic}, and \texttt{spread\_thread} each contribute only a few percent or less.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.75\textwidth]{figures/parameter_importance/importance.pdf}
+    \caption{Relative parameter importance from functional ANOVA over the Gaussian-process search trials.}
+    \label{fig:importance}
+\end{figure}
+
+The dominance of \texttt{spread\_sort} is explained by its role in the spreading step: sorting nonuniform points by spatial location keeps each thread's working set localised, which directly affects cache behaviour. Because it is a binary switch, disabling it produces a large, discrete jump in runtime, which functional ANOVA registers as high importance even though FINUFFT's own default heuristic already selects the better value for most realistic inputs. \texttt{spread\_max\_sp\_size} shows a similar, if smaller, effect for the reasons explored in Chapter~\ref{ch:parameter_tuning}: an ill-chosen subproblem size leads to either excessive scheduling overhead or load imbalance. \texttt{upsampfac}, by contrast, ranks low here despite Chapter~\ref{ch:sigma_selection} showing that, for other input configurations, its choice can change execution time by tens of percent. This is not a contradiction: the importance scores in this section describe a single representative workload, and \texttt{spread\_sort} being switched fully off is a far more extreme perturbation, within this search, than any value of $\sigma$ the optimizer sampled. Where $\sigma$'s effect is large is precisely where FINUFFT's existing two-valued heuristic is coarsest, which is what motivates a dedicated, input-dependent treatment in the next chapter rather than a single fixed recommendation.
+
+\section{Implications for the Remainder of This Thesis}
+
+The stage breakdown and the global sensitivity analysis together justify the choice of parameters examined in the rest of this thesis. \texttt{spread\_sort} clearly matters, but its optimal setting is simple (sorting should remain enabled, as it already is by default for realistic inputs), so no further heuristic development is needed for it. \texttt{spread\_max\_sp\_size} is both highly ranked here and, as shown in Chapter~\ref{ch:parameter_tuning}, governed by a nontrivial trade-off between scheduling overhead and load imbalance, so it receives a dedicated treatment. \texttt{upsampfac} ranks low in this single-workload study, but its known coarse, two-valued default heuristic leaves a large, unaddressed middle ground; Chapter~\ref{ch:sigma_selection} develops a cost model to select it properly as a function of the input. The remaining parameters, \texttt{spread\_nthr\_atomic}, \texttt{spread\_thread}, and \texttt{maxbatchsize}, contribute negligible variance in this analysis and are not investigated further; the latter two are, in addition, only relevant to vectorized multi-transform calls, which fall outside the scope of this thesis.
+
+\section{Summary}
+
+This chapter established where FINUFFT spends its time and which of its configuration parameters have the largest effect on it. Stage-level timing showed that \texttt{execute} dominates type 1 and type 2 transforms, while \texttt{setpts} becomes comparably important for type 3 transforms. A Gaussian process based sensitivity analysis further showed that \texttt{spread\_sort} and \texttt{spread\_max\_sp\_size} account for the large majority of performance variance in a representative workload, while \texttt{upsampfac} has a comparatively small global effect that is nonetheless large in specific, poorly served regions of the input space. These findings set the agenda for the following two chapters: a principled, input-dependent choice of $\sigma$ (Chapter~\ref{ch:sigma_selection}), and a heuristic for the maximum spreader subproblem size (Chapter~\ref{ch:parameter_tuning}).
