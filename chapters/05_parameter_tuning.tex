@@ -92,36 +92,66 @@ To verify that the L3 sized optimum outperforms a naive choice, we compared it a
     \caption{Selected \texttt{perf diff} results comparing the ternary-search optimum ($S_{\max}\approx 7.3\times10^5$, baseline) against $S_{\max}=M/T=2\times10^7$ on Icelake, with $M=4\times10^8$ and $T=20$.}
     \label{tab:perfdiff_maxsp}
 \end{table}
-Figures~\ref{fig:maxsp_uniform} and~\ref{fig:maxsp_exponential} show throughput as a function of $S_{\max}$ for a problem of $M = 10^8$ nonuniform points under the uniform and exponential distributions respectively. In both cases throughput rises steadily as $S_{\max}$ increases from small values up to approximately $10^5$, reflecting the reduction in scheduling and synchronisation overhead described above. Beyond $10^5$ the curve flattens: subproblems are large enough that per-subproblem overhead is negligible and additional increases in $S_{\max}$ yield no further gain. Above $S_{\max} \approx 10^6$ throughput becomes noisy, with run-to-run variance increasing noticeably. At this scale individual subproblems are large enough that load imbalance becomes significant: threads that are assigned a denser or geometrically larger subproblem take substantially longer to finish, leaving other threads idle and reducing effective utilisation.
+%Figures~\ref{fig:maxsp_uniform} and~\ref{fig:maxsp_exponential} show throughput as a function of $S_{\max}$ for a problem of $M = 10^8$ nonuniform points under the uniform and exponential distributions respectively. In both cases throughput rises steadily as $S_{\max}$ increases from small values up to approximately $10^5$, reflecting the reduction in scheduling and synchronisation overhead described above. Beyond $10^5$ the curve flattens: subproblems are large enough that per-subproblem overhead is negligible and additional increases in $S_{\max}$ yield no further gain. Above $S_{\max} \approx 10^6$ throughput becomes noisy, with run-to-run variance increasing noticeably. At this scale individual subproblems are large enough that load imbalance becomes significant: threads that are assigned a denser or geometrically larger subproblem take substantially longer to finish, leaving other threads idle and reducing effective utilisation.
 
-\begin{figure}[h]
+%\begin{figure}[h]
+%    \centering
+%    \begin{subfigure}[b]{0.48\textwidth}
+%        \centering
+%        \includegraphics[width=\textwidth]{figures/max_sp_size/uniform.pdf}
+%        \caption{Uniform distribution.}
+%        \label{fig:maxsp_uniform}
+%    \end{subfigure}
+%    \hfill
+%    \begin{subfigure}[b]{0.48\textwidth}
+%        \centering
+%        \includegraphics[width=\textwidth]{figures/max_sp_size/exponential.pdf}
+%        \caption{Exponential distribution.}
+%        \label{fig:maxsp_exponential}
+%    \end{subfigure}
+%    \caption{Throughput vs.\ $S_{\max}$ for $M = 10^8$ nonuniform points.}
+%    \label{fig:maxsp}
+%\end{figure}
+%
+%The results suggest a simple heuristic for selecting $S_{\max}$: distributing the workload evenly across threads while keeping subproblems above the threshold at which scheduling overhead becomes significant. Concretely, we propose
+%\begin{equation}
+%    S_{\max} = \max\!\left(10^4,\; \frac{M}{10\,T}\right),
+%    \label{eq:smax_heuristic}
+%\end{equation}
+%where $M$ is the total number of nonuniform points and $T$ is the number of threads. 
+%The factor of $10$ provides sufficient granularity for the scheduler to balance load without generating so many subproblems that overhead dominates. 
+%The floor of $10^4$ prevents degenerate cases where $M$ or $T$ is small from producing subproblems that are too fine-grained to be efficient.
+
+To validate the cache-aware sizing approach at a larger problem size, we repeated the comparison between the fixed legacy default ($S_{\max}=10^5$) and our cache-based \texttt{auto} heuristic (Equation~\ref{eq:cache_area}) for $M=4\times10^8$ nonuniform points, sweeping $T \in \{11,13,16,20,25,32,64\}$ on both processors, in both two and three dimensions, and under both point distributions. Table~\ref{tab:auto_vs_100k_geomean} reports the geometric mean of the per-configuration speedup (the $S_{\max}=10^5$ time divided by the \texttt{auto} time) across the seven thread counts in each group.
+
+\begin{table}[h]
     \centering
-    \begin{subfigure}[b]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/max_sp_size/uniform.pdf}
-        \caption{Uniform distribution.}
-        \label{fig:maxsp_uniform}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/max_sp_size/exponential.pdf}
-        \caption{Exponential distribution.}
-        \label{fig:maxsp_exponential}
-    \end{subfigure}
-    \caption{Throughput vs.\ $S_{\max}$ for $M = 10^8$ nonuniform points.}
-    \label{fig:maxsp}
-\end{figure}
+    \begin{tabular}{|l|l|l|l|}
+        \hline
+        \textbf{CPU} & \textbf{Dimension} & \textbf{Distribution} & \textbf{Geometric mean improvement} \\
+        \hline
+        Genoa & 2D & Uniform & +24.9\% \\
+        \hline
+        Genoa & 2D & Exponential & +30.0\% \\
+        \hline
+        Genoa & 3D & Uniform & $-0.7\%$ \\
+        \hline
+        Genoa & 3D & Exponential & +0.3\% \\
+        \hline
+        Icelake & 2D & Uniform & +12.9\% \\
+        \hline
+        Icelake & 2D & Exponential & +13.2\% \\
+        \hline
+        Icelake & 3D & Uniform & +6.9\% \\
+        \hline
+        Icelake & 3D & Exponential & +6.8\% \\
+        \hline
+    \end{tabular}
+    \caption{Geometric-mean speedup of the cache-aware \texttt{auto} heuristic over the fixed legacy default $S_{\max}=10^5$, for $M=4\times10^8$, averaged over $T\in\{11,13,16,20,25,32,64\}$.}
+    \label{tab:auto_vs_100k_geomean}
+\end{table}
 
-The results suggest a simple heuristic for selecting $S_{\max}$: distributing the workload evenly across threads while keeping subproblems above the threshold at which scheduling overhead becomes significant. Concretely, we propose
-\begin{equation}
-    S_{\max} = \max\!\left(10^4,\; \frac{M}{10\,T}\right),
-    \label{eq:smax_heuristic}
-\end{equation}
-where $M$ is the total number of nonuniform points and $T$ is the number of threads. 
-The factor of $10$ provides sufficient granularity for the scheduler to balance load without generating so many subproblems that overhead dominates. 
-The floor of $10^4$ prevents degenerate cases where $M$ or $T$ is small from producing subproblems that are too fine-grained to be efficient.
-
+The cache-aware heuristic delivers a substantial and consistent improvement in two dimensions on both architectures (13--30\%), and a moderate but still consistent gain in three dimensions on Icelake ($\approx 7\%$). On Genoa, however, the three-dimensional gain is negligible, with the per-thread-count improvements roughly cancelling out to a near-zero net effect. 
 
 %Default
 %------------------------------------------------------------------------------------------------------------------
