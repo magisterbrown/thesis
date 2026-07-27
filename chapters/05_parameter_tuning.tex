@@ -16,9 +16,47 @@ During the spreading phase, nonuniform points are partitioned into spatially loc
 A larger $S_{\max}$ reduces the total number of subproblems, thereby lowering scheduling and synchronisation overhead. However, if subproblems are too large relative to the number of available threads, work is distributed unevenly and some threads may sit idle while others finish their chunk, reducing parallel efficiency.
 
 $S_{\max}$ also determines the size of the fine-grid subregion that each subproblem writes to, and ideally this subgrid should fit within L2 or L3 cache. The cache footprint, however, depends not only on $S_{\max}$ but also on the bin size used during the sorting step, so the two parameters are best tuned in conjunction.
-\subsection{Experimental Evaluation}
+\subsection{Subproblem subgrid}
+
+Each subproblem does not merely own its $S_{\max}$ assigned nonuniform points; it also owns a \emph{subgrid} -- a padded, contiguous region of the fine grid into which those points are spread before being accumulated into the global grid. The subgrid's extent along a given axis is the smallest interval that (i) contains the coordinates of all points assigned to the subproblem, and (ii) is padded by half the kernel width $w$ on either side, since a point near the edge of that interval can still deposit weight up to $w/2$ grid points beyond its own coordinate.
+
+Consider the idealised case of points drawn uniformly at density $\rho$ (nonuniform points per fine-grid cell) over a domain whose fine grid has dimensions $n_1 \times n_2 \times \cdots$. A subproblem of $S$ points, at this density, needs to span roughly $S / (\rho\, n_2\, n_3 \cdots)$ cells along the fastest-varying axis to collect all $S$ points while the remaining axes span their full extent. Once $S$ grows large enough that this run saturates the full axis length $n_1$ -- that is, once $S$ exceeds $\rho\, n_1\, n_2 \cdots$ -- any additional points can only be absorbed by extending the \emph{next} axis, and so on for higher dimensions. Adding the kernel padding $w$ to each axis then gives the subgrid's linear dimensions, whose product yields its area (in 2D) or volume (in 3D); we denote this quantity $A(S)$.
+
+Concretely, our implementation evaluates $A(S)$ using the following closed-form expressions, where $n_1, n_2$ denote the fine-grid extent along the two fastest axes, $\beta_1, \beta_2, \beta_3$ the bin sizes used during sorting along each axis, and $w$ the kernel width. In two dimensions,
+\begin{align}
+    f &= \min\!\left(1,\; \frac{S}{n_1 \beta_2 \rho}\right), \\
+    \text{size}_1 &= n_1 f (2-f) + (1-f)\beta_1 + w, \\
+    \text{size}_2 &= \left(1 + \frac{S}{n_1 \beta_2 \rho}\right)\beta_2 + w, \\
+    A(S) &= \text{size}_1 \cdot \text{size}_2 ,
+    \label{eq:area_2d}
+\end{align}
+and in three dimensions,
+\begin{align}
+    f_x &= \min\!\left(1,\; \frac{S}{n_1 \beta_2 \beta_3 \rho}\right), \qquad
+    f_y = \min\!\left(1,\; \frac{S}{n_1 n_2 \beta_3 \rho}\right), \\
+    \text{size}_1 &= n_1 f_x (2-f_x) + (1-f_x)\beta_1 + w, \\
+    \text{size}_2 &= n_2 f_y (2-f_y) + (1-f_y)\beta_2 + w, \\
+    \text{size}_3 &= \left(1 + \frac{S}{n_1 n_2 \beta_3 \rho}\right)\beta_3 + w, \\
+    A(S) &= \text{size}_1 \cdot \text{size}_2 \cdot \text{size}_3 .
+    \label{eq:area_3d}
+\end{align}
+Note that $\text{size}_2$ in the 2D case and $\text{size}_3$ in the 3D case use the \emph{unclamped} ratio $S/(n_1\beta_2\rho)$ rather than the saturating factor $f$: once the leading axis (or axes) saturate their full grid extent, any additional points can only be absorbed by growing the remaining axis without bound, which is exactly the saturating-then-unbounded growth pattern described above.
+
+Because the subgrid is repeatedly written to and read from while its $S$ points are spread, performance depends on whether it fits in cache. Writing $b$ for the number of bytes needed to store one fine-grid cell (two floating-point values, for the complex accumulator), and $C$ for the cache budget available to a single thread, the subgrid comfortably resides in cache so long as
+\begin{equation}
+    A(S) \cdot b \;\le\; C .
+    \label{eq:cache_area}
+\end{equation}
+Since $A(S)$ is monotonically increasing in $S$, Equation~\ref{eq:cache_area} can be inverted -- for instance by binary search over $S$ -- to obtain the largest subproblem size whose subgrid still fits within the cache budget. This gives a cache-aware, architecture-adaptive way of choosing $S_{\max}$, which we contrast later in this chapter with the simpler, purely thread-count-based heuristic of Equation~\ref{eq:smax_heuristic}.
+
+\subsection{Distributions}
 To assess the impact of $S_{\max}$, we evaluate it under two point distributions: uniform, where points are drawn independently from a uniform distribution over the domain, and exponential, where points are clustered around the 0 with density falling off exponentially. Under a uniform distribution the nonuniform points spread evenly across bins, so each subproblem's contributing subgrid remains compact and roughly constant in size. 
 Under an exponential distribution, the majority of points concentrate near the origin, so most bins are densely populated and the subgrid each subproblem must write to is small and spatially compact. However, the tails of the distribution place a small number of points far from the centre; these scattered points fall into bins that are spread across the domain, producing a handful of subproblems whose contributing subgrid spans a disproportionately large region. The resulting variance in subgrid size means that a value of $S_{\max}$ that is well-suited to the dense core may be inadequate for the outlying subproblems, and vice versa.
+
+\subsection{Experimental Evaluation}
+% 1st Step we ran a trenary search to find best subproblem size on different cpus.
+% We found that best value relates to cache size and that it is independent on number of threads. Explain according to perf what is difference between best size and old default of 100k. Explain that max sp is relevant only when critical section is used and it is used by default only after 10 threads. Explain why atomic is faster for less than 10 threads.
+
 
 This distinction matters because real-world applications often process clustered data. In interferometric radio astronomy, for example, \texttt{fftvis}~\cite{fftvis} uses FINUFFT to compute visibilities from antenna pairs. Short baselines between nearby antennas produce many closely spaced measurement points, while long baselines between distant antennas produce only a few points spread far apart. The resulting data therefore has dense clusters alongside sparse outliers, which is precisely the structure that an exponential distribution models.
 \subsection{Experimental Results}
