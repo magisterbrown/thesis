@@ -47,20 +47,51 @@ Because the subgrid is repeatedly written to and read from while its $S$ points 
     A(S) \cdot b \;\le\; C .
     \label{eq:cache_area}
 \end{equation}
-Since $A(S)$ is monotonically increasing in $S$, Equation~\ref{eq:cache_area} can be inverted -- for instance by binary search over $S$ -- to obtain the largest subproblem size whose subgrid still fits within the cache budget. This gives a cache-aware, architecture-adaptive way of choosing $S_{\max}$, which we contrast later in this chapter with the simpler, purely thread-count-based heuristic of Equation~\ref{eq:smax_heuristic}.
+Since $A(S)$ is monotonically increasing in $S$, Equation~\ref{eq:cache_area} can be inverted -- for instance by binary search over $S$ -- to obtain the largest subproblem size whose subgrid still fits within the cache budget. This gives a cache-aware, architecture-adaptive way of choosing $S_{\max}$.
 
 \subsection{Distributions}
 To assess the impact of $S_{\max}$, we evaluate it under two point distributions: uniform, where points are drawn independently from a uniform distribution over the domain, and exponential, where points are clustered around the 0 with density falling off exponentially. Under a uniform distribution the nonuniform points spread evenly across bins, so each subproblem's contributing subgrid remains compact and roughly constant in size. 
 Under an exponential distribution, the majority of points concentrate near the origin, so most bins are densely populated and the subgrid each subproblem must write to is small and spatially compact. However, the tails of the distribution place a small number of points far from the centre; these scattered points fall into bins that are spread across the domain, producing a handful of subproblems whose contributing subgrid spans a disproportionately large region. The resulting variance in subgrid size means that a value of $S_{\max}$ that is well-suited to the dense core may be inadequate for the outlying subproblems, and vice versa.
 
-\subsection{Experimental Evaluation}
-% 1st Step we ran a trenary search to find best subproblem size on different cpus.
-% We found that best value relates to cache size and that it is independent on number of threads. Explain according to perf what is difference between best size and old default of 100k. Explain that max sp is relevant only when critical section is used and it is used by default only after 10 threads. Explain why atomic is faster for less than 10 threads.
-
-
 This distinction matters because real-world applications often process clustered data. In interferometric radio astronomy, for example, \texttt{fftvis}~\cite{fftvis} uses FINUFFT to compute visibilities from antenna pairs. Short baselines between nearby antennas produce many closely spaced measurement points, while long baselines between distant antennas produce only a few points spread far apart. The resulting data therefore has dense clusters alongside sparse outliers, which is precisely the structure that an exponential distribution models.
+\subsection{Experimental Evaluation}
+
+To find the subproblem size that minimises wall-clock time on a given architecture, we performed a ternary search over $S_{\max}$ -- a search strategy suited to the smooth, single-troughed profile that throughput vs.\ $S_{\max}$ exhibits: at each step the search evaluates two interior points of the current bracket and discards the third of the range whose interior point performed worse, repeating until the bracket narrows below a fixed tolerance. We ran this search for $M = 4\times10^8$ nonuniform points under the exponential distribution, at $T=20$ threads, on both an Intel Icelake and an AMD Genoa processor.
+
+The search converged to $S_{\max} \approx 3.4\times10^5$ on Genoa and $S_{\max} \approx 7.3\times10^5$ on Icelake -- a roughly two-fold difference between the two architectures. Substituting these values into Equation~\ref{eq:area_2d} gives predicted subgrid areas of approximately $1.85\times10^6$ grid cells for Genoa and $3.34\times10^6$ grid cells for Icelake; at $16$ bytes per complex fine-grid cell, this corresponds to subgrid footprints of roughly $28.3\,\text{MiB}$ and $50.9\,\text{MiB}$ respectively. These figures track closely with the two processors' L3 cache capacities: $32\,\text{MiB}$ on the Genoa node and $48\,\text{MiB}$ on the Icelake node. The measured optimum therefore sits just under the cache boundary on Genoa ($\approx 88\%$ of L3) and just over it on Icelake ($\approx 106\%$ of L3) -- in both cases within a small margin of the point at which the subgrid stops fitting entirely within L3, which is strong evidence that L3 residency of the subgrid, rather than some fixed algorithmic constant, is what governs the empirically optimal $S_{\max}$.
+
+
+\subsection{Interaction with Accumulation Strategy}
+
+The benefit of tuning $S_{\max}$ described above is not uniform across all thread counts: it depends on how each subproblem's contribution is accumulated into the global fine grid. FINUFFT chooses between two accumulation strategies based on the thread count $T$ relative to a threshold $T_c$ (10 by default): for $T \le T_c$, accumulation is guarded by a single \emph{critical section}, so that only one thread at a time may write into the global grid; for $T > T_c$, accumulation instead uses \emph{atomic} read-modify-write operations on individual grid cells, allowing multiple threads to accumulate concurrently provided they do not touch the same cell.
+
+This choice, in turn, determines how costly a poorly-chosen $S_{\max}$ can be. Under the critical-section strategy, an oversized subproblem does not merely slow down the thread that owns it: every other thread that finishes its own, potentially much smaller and faster, subproblem must still wait for the lock before it can accumulate, so one straggler subproblem stalls the whole team. Under the atomic strategy there is no such shared lock -- a straggler subproblem still costs its own thread additional time, but it does not block any other thread's accumulation step. Tuning $S_{\max}$ to avoid oversized, cache-exceeding subproblems is therefore substantially more important when the critical-section path is active, i.e. at $T \le T_c$.
+
+The choice of $T_c = 10$ itself reflects a trade-off between the two strategies. At low thread counts, genuine write conflicts are rare, so a single lock guarding the whole accumulation step is cheap: it is acquired and released once per subproblem, and its cost is amortised over every grid cell that subproblem touches. Atomic operations, by contrast, impose a locked read-modify-write cost on \emph{every} grid-cell write, whether or not another thread is actually contending for that cell at that instant -- overhead that is wasted when few threads are running. As $T$ grows past $T_c$, the probability that two threads want to write concurrently rises, and the critical section's blanket serialisation -- which blocks all threads regardless of whether their writes actually overlap -- becomes more expensive than paying the atomic overhead only where contention genuinely occurs. $T_c = 10$ is the point at which FINUFFT's default switches from favouring the former regime to the latter.
+
 \subsection{Experimental Results}
 
+To verify that the L3 sized optimum outperforms a naive choice, we compared it against $S_{\max} = M/T$ -- the smallest subproblem size that still guarantees at least one subproblem per thread -- using \texttt{perf diff} on Icelake at $T=20$. Table~\ref{tab:perfdiff_maxsp} shows the largest shifts: relative to the ternary-search optimum ($S_{\max}\approx 7.3\times10^5$), forcing $S_{\max}=M/T=2\times10^7$ shifted a substantial share of total CPU cycles into the spreading work itself: the combined share of \texttt{spreadSorted} and the per-point kernel-evaluation routine rose by roughly $20$ percentage points, an unattributed kernel-space symbol -- consistent with page-fault or TLB-miss handling -- grew by about $5$ points, and time spent zeroing the now much larger subgrid buffer grew by roughly $4$ points. Every other stage of the pipeline (bin-sorting, accumulation into the global grid, harness overhead) shrank in relative share. This is consistent with the cache-residency argument above: at $S_{\max}=M/T$, each thread's subgrid spans a large fraction of the entire domain, far exceeding L3 capacity, so the same per-point kernel work now suffers substantially more cache and TLB misses -- inflating precisely the routines that perform the real per-point spreading, rather than adding some separate, fixed cost.
+
+\begin{table}[h]
+    \centering
+    \resizebox{\textwidth}{!}{%
+    \small
+    \begin{tabular}{|l|l|l|p{5.5cm}|}
+        \hline
+        \textbf{Symbol} & \textbf{Baseline \%} & \textbf{$\Delta$ ($M/T$ vs.\ best)} & \textbf{Interpretation} \\
+        \hline
+        \texttt{spreadSorted} & 16.26\% & +11.03\% & the spreading phase itself takes a much bigger share \\
+        \hline
+        \texttt{spread\_subproblem\_2d\_kernel<7,10>} & 12.51\% & +9.09\% & the actual per-point kernel-eval/accumulate hot loop \\
+        \hline
+        {[unknown]} kernel symbol (\texttt{0xffffffff81007774}) & 4.61\% & +5.07\% & kernel-space time --- page-fault/TLB handling \\
+        \hline
+    \end{tabular}%
+    }
+    \caption{Selected \texttt{perf diff} results comparing the ternary-search optimum ($S_{\max}\approx 7.3\times10^5$, baseline) against $S_{\max}=M/T=2\times10^7$ on Icelake, with $M=4\times10^8$ and $T=20$.}
+    \label{tab:perfdiff_maxsp}
+\end{table}
 Figures~\ref{fig:maxsp_uniform} and~\ref{fig:maxsp_exponential} show throughput as a function of $S_{\max}$ for a problem of $M = 10^8$ nonuniform points under the uniform and exponential distributions respectively. In both cases throughput rises steadily as $S_{\max}$ increases from small values up to approximately $10^5$, reflecting the reduction in scheduling and synchronisation overhead described above. Beyond $10^5$ the curve flattens: subproblems are large enough that per-subproblem overhead is negligible and additional increases in $S_{\max}$ yield no further gain. Above $S_{\max} \approx 10^6$ throughput becomes noisy, with run-to-run variance increasing noticeably. At this scale individual subproblems are large enough that load imbalance becomes significant: threads that are assigned a denser or geometrically larger subproblem take substantially longer to finish, leaving other threads idle and reducing effective utilisation.
 
 \begin{figure}[h]
