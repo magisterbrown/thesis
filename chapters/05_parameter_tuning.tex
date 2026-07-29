@@ -132,77 +132,32 @@ To validate the cache-aware sizing approach at a larger problem size, we repeate
         \hline
         \textbf{CPU} & \textbf{Dimension} & \textbf{Distribution} & \textbf{Geometric mean improvement} \\
         \hline
-        Genoa & 2D & Uniform & +24.9\% \\
+        Genoa & 2D & Uniform & +12.0\% \\
         \hline
-        Genoa & 2D & Exponential & +30.0\% \\
+        Genoa & 2D & Exponential & +13.8\% \\
         \hline
-        Genoa & 3D & Uniform & $-0.7\%$ \\
+        Genoa & 3D & Uniform & +0.8\% \\
         \hline
-        Genoa & 3D & Exponential & +0.3\% \\
+        Genoa & 3D & Exponential & $-1.2\%$ \\
         \hline
-        Icelake & 2D & Uniform & +12.9\% \\
+        Icelake & 2D & Uniform & +14.1\% \\
         \hline
-        Icelake & 2D & Exponential & +13.2\% \\
+        Icelake & 2D & Exponential & +12.9\% \\
         \hline
-        Icelake & 3D & Uniform & +6.9\% \\
+        Icelake & 3D & Uniform & +2.1\% \\
         \hline
-        Icelake & 3D & Exponential & +6.8\% \\
+        Icelake & 3D & Exponential & +2.2\%* \\
         \hline
     \end{tabular}
-    \caption{Geometric-mean speedup of the cache-aware \texttt{auto} heuristic over the fixed legacy default $S_{\max}=10^5$, for $M=4\times10^8$, averaged over $T\in\{11,13,16,20,25,32,64\}$.}
+    \caption{Geometric-mean speedup of the cache-aware \texttt{auto} heuristic (at its deployed setting, $\text{CACHE\_FRAC}=0.25$) over the fixed legacy default $S_{\max}=10^5$, for $M=4\times10^8$, averaged over $T\in\{11,13,16,20,25,32,64\}$. The row marked * is computed from a partial subset of thread counts still being completed and will be updated with the full sweep.}
     \label{tab:auto_vs_100k_geomean}
 \end{table}
 
-The cache-aware heuristic delivers a substantial and consistent improvement in two dimensions on both architectures (13--30\%), and a moderate but still consistent gain in three dimensions on Icelake ($\approx 7\%$). On Genoa, however, the three-dimensional gain is negligible, with the per-thread-count improvements roughly cancelling out to a near-zero net effect. 
+The cache-aware heuristic delivers a consistent improvement in two dimensions on both architectures (12--14\%), and a small but still positive gain in three dimensions on Icelake ($\approx 2\%$). On Genoa, the three-dimensional gain is negligible and mixed in sign, with the per-thread-count improvements roughly cancelling out to a near-zero net effect.
 
-%Default
-%------------------------------------------------------------------------------------------------------------------
-%Benchmark                                                                        Time             CPU   Iterations
-%------------------------------------------------------------------------------------------------------------------
-%finufft/type=1/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5    104004213 ns     96360834 ns            5
-%finufft/type=1/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5    111742370 ns    100082484 ns            5
-%finufft/type=1/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   101438345 ns     78884176 ns            5
-%finufft/type=1/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    140437073 ns    120852650 ns            5
-%finufft/type=1/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   104703467 ns     95487879 ns            5
-%finufft/type=1/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  330611688 ns    280772805 ns            5
-%finufft/type=2/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5     20235265 ns     14743314 ns            5
-%finufft/type=2/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5     29665516 ns     23004649 ns            5
-%finufft/type=2/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   185175170 ns    171538120 ns            5
-%finufft/type=2/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    184318504 ns    168588415 ns            5
-%finufft/type=2/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   196846679 ns    192807557 ns            5
-%finufft/type=2/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  379893409 ns    296984258 ns            5
-%finufft/type=3/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5    130139967 ns    122385355 ns            5
-%finufft/type=3/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5    218484393 ns    203626536 ns            5
-%finufft/type=3/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   156514883 ns    146343491 ns            5
-%finufft/type=3/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    278288680 ns    248954919 ns            5
-%finufft/type=3/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   156417141 ns    140340727 ns            5
-%finufft/type=3/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  407662669 ns    360908459 ns            5
+\subsection{Choice of Cache Fraction}
 
-
-%Modification
-%------------------------------------------------------------------------------------------------------------------
-%Benchmark                                                                        Time             CPU   Iterations
-%------------------------------------------------------------------------------------------------------------------
-
-%finufft/type=1/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5    111249222 ns     92240226 ns            5
-%finufft/type=1/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5    114176635 ns    104217535 ns            5
-%finufft/type=1/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   111959182 ns    108849248 ns            5
-%finufft/type=1/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    134733689 ns    131296817 ns            5
-%finufft/type=1/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5    92037026 ns     88242083 ns            5
-%finufft/type=1/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  322889396 ns    281542658 ns            5
-%finufft/type=2/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5     21633073 ns     16684396 ns            5
-%finufft/type=2/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5     30017880 ns     23101229 ns            5
-%finufft/type=2/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   295619691 ns    291823505 ns            5
-%finufft/type=2/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    207446423 ns    201381551 ns            5
-%finufft/type=2/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   281055092 ns    265416361 ns            5
-%finufft/type=2/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  382937961 ns    328399410 ns            5
-%finufft/type=3/prec=f/tol=0.001/Nd=10000x1x1/M=100000000/iterations:5    118837882 ns    110321468 ns            5
-%finufft/type=3/prec=d/tol=1e-08/Nd=10000x1x1/M=100000000/iterations:5    209167666 ns    187193889 ns            5
-%finufft/type=3/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   144153962 ns    131839122 ns            5
-%finufft/type=3/prec=d/tol=1e-08/Nd=320x320x1/M=100000000/iterations:5    297292928 ns    265495010 ns            5
-%finufft/type=3/prec=f/tol=0.0001/Nd=320x320x1/M=100000000/iterations:5   143055531 ns    130515694 ns            5
-%finufft/type=3/prec=d/tol=1e-06/Nd=192x192x128/M=100000000/iterations:5  399080786 ns    362673250 ns            5
-
+Parameter $d$ sets the cache fraction dedicated to the subgrid during the transform. To identify the best fraction, we used a ternary search that finds the best subproblem size. We tested configurations with opposing amounts of L3 contention, which is maximal when the transform uses all available threads and minimal for a transform with one thread above the atomic boundary. The measurements show that on Genoa CPUs, with more threads, the fraction of L3 per thread falls from 0.58x to 0.29x; however, transforms on Icelake CPUs do not follow this trend. We decided to always dedicate 0.25x of L3, which allows the subgrid to always fit in cache.
 
 
 % TODO: if applicable, address batching parameters

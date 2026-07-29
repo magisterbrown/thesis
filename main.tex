@@ -1,25 +1,14 @@
-\documentclass[12pt, a4paper]{report}
+\documentclass[a4paper]{tudelft-report}
 
-% Packages
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
-\usepackage{lmodern}
+% Packages not already provided by the tudelft-report class
 \usepackage{geometry}
 \usepackage{setspace}
-\usepackage{hyperref}
-\usepackage{amsmath}
-\usepackage{amssymb}
-\usepackage{graphicx}
 \usepackage{booktabs}
-\usepackage{caption}
 \usepackage{subcaption}
 \usepackage{listings}
-\usepackage{xcolor}
 \usepackage{natbib}
 \usepackage{csquotes}
 \usepackage{microtype}
-\usepackage{fancyhdr}
-\usepackage{titlesec}
 \usepackage{acronym}
 
 % Page geometry
@@ -33,13 +22,6 @@
 % Line spacing
 \onehalfspacing
 
-% Header/footer
-\pagestyle{fancy}
-\fancyhf{}
-\fancyhead[L]{\leftmark}
-\fancyhead[R]{\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
-
 % Code listing style
 \lstset{
     basicstyle=\ttfamily\small,
@@ -52,7 +34,25 @@
     stringstyle=\color{red!70!black},
 }
 
+% Avoid unicode-math/hyperref crashes when Greek letters appear in
+% chapter/section titles (used for PDF bookmarks and metadata).
+\pdfstringdefDisableCommands{%
+    \def\sigma{sigma}%
+    \def\gamma{gamma}%
+}
+
+% Cover / title metadata
+\title[tudelft-white]{FINUFFT Performance Evaluation and Optimization}
+\subtitle[tudelft-black]{Developing Heuristics for Efficient Parameter Selection}
+\author[tudelft-white]{[Your Name]}
+\affiliation{Technische Universiteit Delft}
+
 \begin{document}
+
+\setpagecolor{tudelft-cyan}
+\makecover
+
+\frontmatter
 
 % Title page
 \input{frontmatter/titlepage}
@@ -65,8 +65,7 @@
 \listoffigures
 \listoftables
 
-\cleardoublepage
-\pagenumbering{arabic}
+\mainmatter
 
 % Chapters
 \input{chapters/01_introduction}
