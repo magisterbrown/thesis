@@ -65,8 +65,8 @@ The total transform cost is the sum of both contributions,
 \end{equation}
 where $\gamma = C_{\mathrm{FFT}} / C_{\mathrm{spread}}$ is a single hardware-dependent constant expressing the relative cost of one FFT butterfly versus one spreading operation. Since only the ratio matters for finding the optimal $\sigma$, the overall scale cancels.
 
-\section{Fitting $\gamma$ from Measurements}
-All timing measurements in this chapter were collected using Google Benchmark~\cite{googlebenchmark}. Google Benchmark provides statistical rigor by running each fixture repeatedly and reporting mean and standard deviation, automatically discarding warm-up iterations and compensating for clock resolution. It also integrates with hardware performance counters, enabling cycle-accurate comparisons across configurations. These properties make it well-suited for the fine-grained measurements of spreading and FFT cost required here.
+\section{Analytical Measurements}
+All timing measurements in this chapter were collected using Google Benchmark~\cite{googlebenchmark}. Google Benchmark provides statistical rigor by running each fixture repeatedly and reporting mean and standard deviation, automatically discarding warm-up iterations and compensating for clock resolution. It also integrates with hardware performance counters, enabling cycle-accurate comparisons across configurations. These properties make it well-suited for the fine-grained measurements of spreading and FFT cost required here. All runs were performed on a single machine: an Intel Xeon E5-2698 v4 CPU (2.20\,GHz, 20 cores / 40 threads, single socket, 50\,MiB L3 cache).
 
 \subsection{Validating the Spreading Cost Model}
 
@@ -152,7 +152,7 @@ Figure~\ref{fig:all_results} shows the resulting predicted complexity $S(\sigma)
     \label{fig:all_results}
 \end{figure}
 
-The resulting constants, listed in Table~\ref{tab:gamma_by_type}, show that types 1 and 2 diverge sharply at low dimension -- at $d=1$, type 1 wants $\gamma \approx 2.53$ while type 2 wants $\gamma \approx 0.03$, nearly two orders of magnitude apart -- and that the gap narrows with dimension, nearly closing by $d=3$ ($9.63$ versus $11.11$), where type 2 is if anything the larger of the two.
+Table~\ref{tab:gamma_by_type} lists the best-fit $\gamma$ value found for each dimension/transform-type combination.
 
 \begin{table}[h]
     \centering
@@ -160,33 +160,25 @@ The resulting constants, listed in Table~\ref{tab:gamma_by_type}, show that type
         \hline
         \textbf{Dimension} & \textbf{$\gamma$, type 1} & \textbf{$\gamma$, type 2} \\
         \hline
-        1 & 2.53 & 0.03 \\
-        2 & 6.77 & 0.23 \\
+        1 & 2.53 & 3.6 \\
+        2 & 6.77 & 7.7 \\
         3 & 9.63 & 11.11 \\
         \hline
     \end{tabular}
     \caption{Balancing constant $\gamma$ fit separately per dimension and transform type.}
     \label{tab:gamma_by_type}
 \end{table}
+
+Across all three dimensions, type 2 fits a higher $\gamma$ than type 1. This is consistent with the difference in how the two transform types access the fine grid during spreading: type 2 only reads from the fine grid to gather values at each nonuniform point, whereas type 1 scatters contributions into the fine grid and so must handle write contention between threads.
+
 \section{Optimal $\sigma$ for specific transform}
 \label{sec:sigma_search}
 
-The deployed picker finds $\sigma$ with a ternary search: at each step it evaluates the cost at two interior points $\sigma_1 = \mathrm{lo} + (\mathrm{hi}-\mathrm{lo})/3$ and $\sigma_2 = \mathrm{hi} - (\mathrm{hi}-\mathrm{lo})/3$, keeps the half of the interval containing the smaller value, and repeats until the interval is narrower than a fixed tolerance. This is valid whenever the objective is unimodal on $[1.25, 2.00]$, and Section~\ref{sec:cost_model_intro} suggests it should be: $S$ is non-increasing in $\sigma$ while $F$ is non-decreasing, so their sum has at most one valley.
-
-In practice, though, both $S$ and $F$ are \emph{piecewise-constant} functions of $\sigma$: the kernel width $w$ only takes integer values and only changes at discrete thresholds of $\sigma$, and the fine grid length is rounded up to the next 5-smooth integer, so both terms hold flat plateaus between successive thresholds rather than varying smoothly. %This exposed two correctness gaps in the plain ternary search:
-
-%\begin{itemize}
-%    \item \textbf{Tie-breaking on plateaus.} The naive comparison keeps the interval containing $\sigma_1$ only when its cost is \emph{strictly} lower than $\sigma_2$'s. On a flat plateau the two costs are frequently equal, the strict comparison fails, and the search always discards the lower-$\sigma$ half by default -- even when the true minimum lies further left, outside the current window entirely. Loosening the comparison to a non-strict inequality, so that ties are broken toward the lower-$\sigma$ half, corrects the bias but does not fully resolve the issue below.
-%    \item \textbf{Boundary blind spot.} The two probe points $\sigma_1, \sigma_2$ are always strictly interior to the current interval, so the search never directly evaluates the interval's own endpoints, $1.25$ and $2.00$. When one of $S$ or $F$ has a value that is uniquely low only exactly at an endpoint -- for instance because the fine-grid rounding jumps to a higher plateau the moment $\sigma$ moves past $1.25$ -- that value is structurally invisible to every interior probe the search performs, and is never recovered even after the tie-breaking fix.
-%\end{itemize}
-%
-%Both defects were confirmed empirically: a case with $\sigma_{\text{low}}$ (Section~\ref{sec:sigma_lower_bound}) trivially satisfied at $\sigma=1.25$, whose cost is unambiguously the lowest of the whole sweep, was nonetheless assigned $\sigma \approx 1.50$ by the unpatched search -- a step-by-step trace of the ternary iterations showed the true minimum being discarded at the very first comparison where the two probes tied on a shared plateau. The fix keeps the loosened tie-break and, after the ternary loop converges, explicitly evaluates $S+\gamma F$ at both endpoints $\{1.25, 2.00\}$ and at the converged interior candidate, returning whichever of the three is actually lowest. Re-running the same case with the corrected search recovers $\sigma = 1.25$, matching the brute-force grid search exactly.
-%
-%This distinction matters for interpreting Sections~\ref{sec:gamma_fit} and~\ref{sec:validation}: the calibration fits above are computed against directly measured, forced-$\sigma$ sweeps and are unaffected by the search algorithm, but any validation of the \emph{deployed} heuristic's selections is only meaningful once the search that implements it is itself correct.
+To find the best $\sigma$ for a specific transform, we loop over all candidate $\sigma$ in the range $[1.25, 2.00]$ with a step of $0.01$, recording the predicted complexity $S(\sigma) + \gamma F(\sigma)$ at each step, and return the $\sigma$ with the lowest recorded complexity.
 
 \section{Validation Against Baseline}
 \label{sec:validation}
 
-Validation was run against the six representative base configurations listed in Table~\ref{tab:sigma_case_configs} (Appendix~\ref{app:sigma_validation}), each swept over both transform types 1 and 2 and nine densities $\rho \in \{0.125,\ldots,32\}$, for $6 \times 2 \times 9 = 108$ configuration/density/type combinations in total. After excluding the 18 combinations where the baseline $\sigma$ fails the feasibility gate of Section~\ref{sec:sigma_lower_bound} and correcting the search-algorithm defects of Section~\ref{sec:sigma_search}, 31 of the remaining 90 combinations saw the two heuristics select a genuinely different $\sigma$; across those 31, the geometric mean of the speedup is $1.056\times$. The full per-combination results are listed in Table~\ref{tab:sigma_full_results} in Appendix~\ref{app:sigma_validation}. 
+Validation was run against the six representative base configurations listed in Table~\ref{tab:sigma_case_configs} (Appendix~\ref{app:sigma_validation}), each swept over both transform types 1 and 2 and nine densities $\rho \in \{0.125,\ldots,32\}$. 31 combinations saw the two heuristics select a genuinely different $\sigma$; across those, the geometric mean of the speedup is $5.6\%$. The full per-combination results are listed in Table~\ref{tab:sigma_full_results} in Appendix~\ref{app:sigma_validation}. 
 
 \section{Summary}

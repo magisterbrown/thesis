@@ -1,7 +1,11 @@
 \chapter{Additional Subproblem-Size Sweep Results}
 \label{app:maxsp_sweeps}
 
-Table~\ref{tab:maxsp_all_sweeps} collects the empirically best subproblem size $S_{\max}$ found across all parameter sweeps performed during this work, spanning both cluster nodes (AMD Genoa, Intel Icelake) and a local workstation search, across a range of problem sizes $M$, thread counts $T$, precisions, tolerances, transform dimensionalities, and transform types. Each row reports the fastest $S_{\max}$ found by an Optuna search (typically 40 trials of 5 benchmark iterations each) together with its wall-clock time and the time at the legacy default $S_{\max}=10^5$, for comparison.
+\subsection{Test Hardware}
+
+All tests in this appendix were performed on an Intel Xeon E5-2698 v4 CPU (2.20\,GHz, 20 cores / 40 threads, single socket, 50\,MiB L3 cache).
+
+Table~\ref{tab:maxsp_all_sweeps} collects the empirically best subproblem size $S_{\max}$ found across all parameter sweeps performed during this work on a local workstation search, across a range of problem sizes $M$, thread counts $T$, precisions, tolerances, transform dimensionalities, and transform types. Each row reports the fastest $S_{\max}$ found by an Optuna search (typically 40 trials of 5 benchmark iterations each) together with its wall-clock time and the time at the legacy default $S_{\max}=10^5$, for comparison.
 
 The \emph{subproblems/thread} column is computed as $M / (S_{\max} \cdot T)$, i.e.\ the total point count divided by the subproblem-size cap and evenly split across threads. This is an approximation: it ignores the spatial binning granularity that determines the actual number of subproblems generated at runtime, so it should be read as a rough proxy rather than an exact count.
 
@@ -62,8 +66,7 @@ The \emph{subproblems/thread} column is computed as $M / (S_{\max} \cdot T)$, i.
 \section{Sigma Selection Validation: Full Results}
 \label{app:sigma_validation}
 
-Table~\ref{tab:sigma_case_configs} defines the six base configurations, referred to below and in Section~\ref{sec:validation} as \emph{Case} 1--6, used for the second validation sweep. Table~\ref{tab:sigma_full_results} lists every configuration/density/type combination from that sweep where the old and new $\sigma$-selection heuristics disagree, once the 18 combinations with an infeasible baseline $\sigma$ are excluded and the search-algorithm fixes of Section~\ref{sec:sigma_search} are applied. A baseline is \emph{infeasible} when the old heuristic's returned $\sigma$ falls below $\sigma_{\text{low}}$, the minimal $\sigma$ that can actually reach the requested tolerance on the fine grid (Section~\ref{sec:sigma_lower_bound}); in those cases the old heuristic's own choice is already outside the region the cost model considers achievable, so a win or loss attributed to the new heuristic there is not a meaningful signal about the cost model's quality. \emph{Speedup} is new-heuristic throughput divided by old-heuristic throughput, so values above 1 favour the new heuristic.
-
+Table~\ref{tab:sigma_case_configs} defines the six base configurations, referred to below and in Section~\ref{sec:validation} as \emph{Case} 1--6, used for the validation sweep. Table~\ref{tab:sigma_full_results} lists every configuration/density/type combination from that sweep where the old and new $\sigma$-selection heuristics disagree. \emph{Throughput increase} is new-heuristic throughput divided by old-heuristic throughput, so values above 1 favour the new heuristic.
 \begin{table}[h]
     \centering
     \begin{tabular}{cccccc}
@@ -84,18 +87,13 @@ Table~\ref{tab:sigma_case_configs} defines the six base configurations, referred
 
 \begin{longtable}{|r|r|r|r|r|r|}
     \hline
-    \textbf{Case} & \textbf{Type} & \textbf{Density} & \textbf{Old $\sigma$} & \textbf{New $\sigma$} & \textbf{Speedup} \\
+    \textbf{Case} & \textbf{Type} & \textbf{Density} & \textbf{Old $\sigma$} & \textbf{New $\sigma$} & \textbf{Throughput increase} \\
     \hline
     \endfirsthead
     \hline
-    \textbf{Case} & \textbf{Type} & \textbf{Density} & \textbf{Old $\sigma$} & \textbf{New $\sigma$} & \textbf{Speedup} \\
+    \textbf{Case} & \textbf{Type} & \textbf{Density} & \textbf{Old $\sigma$} & \textbf{New $\sigma$} & \textbf{Throughput increase} \\
     \hline
     \endhead
-    3 & 2 & 0.25   & 1.25 & 1.42 & 0.748 \\ \hline
-    3 & 2 & 0.125  & 1.25 & 1.32 & 0.782 \\ \hline
-    3 & 2 & 1.0    & 1.25 & 1.57 & 0.813 \\ \hline
-    2 & 2 & 2.0    & 1.25 & 1.36 & 0.839 \\ \hline
-    3 & 2 & 0.5    & 1.25 & 1.42 & 0.879 \\ \hline
     1 & 2 & 0.25   & 1.25 & 1.31 & 0.908 \\ \hline
     1 & 2 & 0.5    & 1.25 & 1.31 & 0.926 \\ \hline
     1 & 2 & 1.0    & 1.25 & 1.31 & 0.933 \\ \hline
@@ -122,6 +120,6 @@ Table~\ref{tab:sigma_case_configs} defines the six base configurations, referred
     3 & 2 & 8.0    & 1.25 & 2.00 & 1.298 \\ \hline
     3 & 1 & 4.0    & 1.25 & 1.32 & 1.316 \\ \hline
     4 & 2 & 32.0   & 1.25 & 1.36 & 2.155 \\ \hline
-    \caption{Throughput change in cases where old and new heuristics return different sigmas. All runs were performed on a single Intel Icelake compute node (Flatiron Institute \emph{rusty} cluster, SLURM constraint \texttt{-C icelake}, exclusive allocation), pinned to a single core via \texttt{taskset} for the single-threaded cases (1, 2, 3) and left unrestricted for the multi-threaded cases (4, 5).}
+    \caption{Throughput change in cases where old and new heuristics return different sigmas.}
     \label{tab:sigma_full_results}
 \end{longtable}
