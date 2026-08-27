@@ -20,6 +20,9 @@ A larger $S_{\max}$ reduces the total number of subproblems, thereby lowering sc
 
 $S_{\max}$ determines the amount of memory dedicated to subproblem processing. During the gathering step, the algorithm loads $S_{\max}$ points with their coordinates into the memory buffer and creates the subgrid that each subproblem writes to. Ideally, this buffer and subgrid should fit within the fraction of the L2 or L3 cache available per thread. The subgrid's cache footprint, however, depends not only on $S_{\max}$ but also on the bin size used during the sorting step, so the two parameters are best tuned in conjunction.
 
+\subsection{Processing of subproblem}
+Processing a single subproblem during \texttt{execute} consists of three steps. \emph{Gathering} loads the coordinates and strengths of that subproblem's assigned points into a local buffer and allocates the local subgrid they will be spread onto. \emph{Spreading} then accumulates each point's contribution into that local subgrid, applying the spreading kernel over the $w^d$ neighbourhood of cells around each point. \emph{Adding} (\texttt{add\_wrapped\_subgrid}) finally writes the finished local subgrid back into the shared global fine grid, wrapping any cells that overflow the domain boundary and guarding against concurrent writes from other subproblems with either a lock or an atomic write, depending on the number of threads.
+
 \subsection{Older heuristics}
 The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $N/n_{\text{thr}}$ for type-2 and type-3 transforms, and to the minimum of $10^4$ and $N/n_{\text{thr}}$ for type-1 transforms. These constants are suboptimal: they introduce extra OpenMP scheduling overhead, and for transforms with very low density, the subgrid can end up very large and spill out of cache into main memory.
 
@@ -60,10 +63,44 @@ We ran a Gaussian-process search over $S_{\max}$ for the single-threaded, double
         \hline
         2D & 20{,}000 & 20{,}000 & Double & Multi & 737{,}449 \\
         \hline
+        2D & 12{,}691 & 12{,}691 & Single & Multi & 240{,}489 \\
+        \hline
     \end{tabular}
     \caption{Gaussian-process-tuned $S_{\max}$ for 2D type-1 transforms at density 1 ($\approx 2.4\,\text{GiB}$ of nonuniform-point data), multi-threaded.}
     \label{tab:maxsp_2d_gp_search}
 \end{table}
+
+In both cases, the Gaussian-process-tuned $S_{\max}$ is substantially larger than the $100{,}000$ legacy default used by the current heuristic: $737{,}449$ for double precision and $240{,}489$ for single precision, both more than double the legacy value. This is the opposite regime from the 1D case above, where tuning made little difference -- here $S_{\max}$ has a real, sizeable effect on throughput.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|r|r|r|}
+        \hline
+        \textbf{Function} & \textbf{737,449} & \textbf{100,000} & $\boldsymbol{\Delta}$ \\
+        \hline
+        \texttt{bin\_sort\_multithread\_impl}          & 480.1\,B & 500.1\,B & $-20.0$\,B \\
+        \hline
+        \texttt{spread\_subproblem\_2d\_kernel<14,12>} & 277.3\,B & 265.4\,B & $+11.9$\,B \\
+        \hline
+        \texttt{spreadSorted}                          & 276.0\,B & 216.3\,B & $+59.8$\,B \\
+        \hline
+        \texttt{add\_wrapped\_subgrid<true>}           & 99.4\,B  & 256.5\,B & $-157.1$\,B \\
+        \hline
+        DUCC FFT (\texttt{copy\_in}/\texttt{out} + \texttt{cfftp*}) & 149.8\,B & 162.0\,B & $-12.2$\,B \\
+        \hline
+        \textbf{Total} & \textbf{1{,}543.9\,B} & \textbf{1{,}635.9\,B} & \textbf{$-92.0$\,B} \\
+        \hline
+    \end{tabular}
+    \caption{\texttt{perf} per-function cycle counts (in billions of cycles, \texttt{perf stat -e cycles}) for the 2D double-precision case, comparing the Gaussian-process optimum ($S_{\max}=737{,}449$) against the legacy default ($S_{\max}=100{,}000$). The $737{,}449$ column's total was measured directly; the $100{,}000$ column is estimated by scaling that measurement with the execute-time ratio between the two configurations.}
+    \label{tab:maxsp_2d_perfdiff}
+\end{table}
+
+Table~\ref{tab:maxsp_2d_perfdiff} shows that \texttt{add\_wrapped\_subgrid} -- the accumulation step that writes each subproblem's subgrid back into the global fine grid -- is the routine most affected by $S_{\max}$: its cycle count drops by $157.1$ billion cycles, from $256.5$B to $99.4$B, when $S_{\max}$ grows from the legacy default to the tuned optimum.
+
+First, performance of \texttt{add\_wrapped\_subgrid} is determined by the total sum of all subgrid areas written back to the global grid: a larger total write volume means more work for this step. 
+
+With a critical section, this step's performance depends on the number of threads and subproblems. With atomic stores, however, contention instead depends on the overlapping area between subgrids. There is no hardware instruction for atomic addition of floats or doubles, so OpenMP's implementation of \texttt{\#pragma omp atomic} falls back to a compare-and-swap instruction. It works as follows: the old value is first loaded from the grid, then a new value is stored via a CAS that checks whether the old value is still present; a subsequent branch checks whether the CAS succeeded, and on failure the operation is retried. This gives the accumulation step the lock-free property, per the definition in~\cite[Sec.~3.7, p.~60]{herlihyshavit2012}. The overlapping area between subgrids therefore directly determines the amount of contention, and with it the expected number of retries.
+
 
 %\subsection{Subproblem subgrid}
 %
