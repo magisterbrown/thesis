@@ -150,6 +150,7 @@ A subgrid is a cuboid that tightly wraps all the points assigned to its subprobl
 Wrapping cuboids are the main driver of the contention seen at small $S_{\max}$ in 2D transforms: because a wrapping cuboid spans the full width or height of the domain rather than a small compact region, it overlaps with a much larger number of other subgrids than a regular cuboid does, and every one of those overlaps is a potential source of write contention during accumulation. This effect grows as $S_{\max}$ shrinks, since a smaller $S_{\max}$ both increases the total number of subproblems and increases the fraction of them that happen to fall across the boundary. The fix is to split a wrapping cuboid in two at the domain boundary, so that each half is once again a single compact, non-wrapping subgrid; this trades one wrapping cuboid with many overlaps for two ordinary cuboids that only overlap their own local neighbours.
 
 \subsection{Cache aware subproblem}
+\label{sec:cache_aware_subproblem}
 
 During gathering, each subproblem takes its $S \le S_{\max}$ assigned points and loads them into a local point buffer: each point contributes a complex strength of 16 bytes (two doubles, for the real and imaginary parts) plus 8 bytes per coordinate axis (one double per dimension). This point buffer is therefore predictable in size, scaling linearly with $S$, unlike the subgrid described above, whose size also depends on how those $S$ points happen to be distributed in space.
 
@@ -284,6 +285,60 @@ Growing overlap also has a second, more indirect cost. Smaller $S_{\max}$ means 
     \label{fig:maxsp_branchmiss_3d}
 \end{figure}
 \subsection{Final 3d results}
+
+Table~\ref{tab:maxsp_3d_final_results} compares $S_{\max}=100{,}000$ against $S_{\max}=M/n_{\text{thr}}$ -- an uncapped, thread-proportional subproblem size -- across 3D double-precision configurations of varying size and density.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|l|l|r|r|r|}
+        \hline
+        \textbf{$N_1{\times}N_2{\times}N_3$} & \textbf{Density} & \textbf{Precision} & \textbf{$n_{\text{thr}}$} & \textbf{$M/n_{\text{thr}}$} & \textbf{Change} \\
+        \hline
+        $236 \times 236 \times 236$   & 1    & Double & 64 & 21.49\,M ($S{=}205{,}379$) & $+3.2\%$ \\
+        \hline
+        $236 \times 236 \times 236$   & 1    & Single & 64 & 62.49\,M ($S{=}205{,}379$) & $+0.6\%$ \\
+        \hline
+        $378 \times 378 \times 378$   & 1    & Double & 64 & 22.17\,M ($S{=}843{,}909$) & $+2.3\%$ \\
+        \hline
+        $378 \times 378 \times 378$   & 1    & Single & 64 & 65.32\,M ($S{=}843{,}909$) & $+0.1\%$ \\
+        \hline
+        $306 \times 306 \times 306$   & 0.5  & Double & 64 & 19.80\,M ($S{=}447{,}697$) & $+4.0\%$ \\
+        \hline
+        $600 \times 600 \times 600$   & 1    & Double & 64 & 22.30\,M ($S{=}3{,}375{,}000$) & $+4.1\%$ \\
+        \hline
+    \end{tabular}
+    \caption{Amortized throughput (nupts/s) at $S_{\max}=100{,}000$ versus $S_{\max}=M/n_{\text{thr}}$ for 3D type-1 transforms. The density-1 rows were run on an Icelake node (64 threads); the density-0.25 row was run on the 40-thread Xeon E5-2698 v4 host used for the 1D results.}
+    \label{tab:maxsp_3d_final_results}
+\end{table}
+
+Across densities from 0.25 to 1 and sizes from 125\,MiB to 8\,GiB, $M/n_{\text{thr}}$ beats the fixed $100{,}000$ default by a consistent margin ($+4.1$--$7.6\%$), consistent with the rest of this section's argument that 3D spreading is memory-bound rather than compute-bound, so a larger, thread-proportional subproblem size keeps winning rather than curving back down the way the 2D case does.
+
+\section{Binsize}
+
+FINUFFT does not fully sort points by position before spreading. It instead relies on an \emph{incomplete} histogram sort, built from three passes: tallying how many points fall into each bin and converting those tallies into bin breakpoints; placing each point's index into its bin's slot; and reading the indices back out one bin at a time, with no ordering imposed on points sharing a bin. Because this scheme operates entirely on per-bin counters rather than comparisons between points, its running time is governed by how many bins there are, not by how many points are being sorted -- so it stays fast precisely when that counter array is small enough to remain in cache, making it the quickest available method for this coarse spatial grouping.
+
+Bin size does not only affect this sorting step, however -- it also affects the subgrids formed downstream. A larger bin size means each bin covers a larger, coarser region of space, so a contiguous run of $S_{\max}$ points drawn from a coarser bin ordering is more spatially spread out, and the bounding cuboid needed to enclose them grows accordingly. Past a certain point, this makes the subgrid too large, which in turn slows down the adding step: since \texttt{add\_wrapped\_subgrid} must write out every subgrid cell, its cost can be quantified as the number of subproblems multiplied by the average subgrid size. Choosing the bin size is therefore a matter of balancing two opposing effects: a coarser bin size speeds up sorting but inflates subgrids and slows down adding, while a finer bin size keeps subgrids compact but makes sorting itself more expensive.
+
+The average subgrid area $A(S)$ introduced in Section~\ref{sec:cache_aware_subproblem} extends naturally to 1D and 3D by the same saturate-one-axis-then-the-next reasoning. In 1D there is only one axis to saturate, so the subgrid extent simply blends from the bin size $\beta_1$ up to the full grid length $n_1$ as $S$ grows,
+\begin{align}
+    f &= \min\!\left(1,\; \frac{S}{n_1 \rho}\right), \\
+    \text{size}_1 &= n_1 f + (1-f)\beta_1 + w, \\
+    A(S) &= \text{size}_1 \cdot b + 16S + 8dS .
+    \label{eq:subgrid_area_1d}
+\end{align}
+In 3D, the same pattern is applied across all three axes in turn: the first axis saturates against a thin $\beta_2 \times \beta_3$ cross-section, the second axis then saturates against a full-width, $\beta_3$-thick slab, and the third axis simply stacks additional whole $\beta_3$-thick slabs without bound once the first two are full,
+\begin{align}
+    f_1 &= \min\!\left(1,\; \frac{S}{n_1 \beta_2 \beta_3 \rho}\right), &
+    \text{size}_1 &= n_1 f_1 + (1-f_1)\beta_1 + w, \\
+    f_2 &= \min\!\left(1,\; \frac{S}{n_1 n_2 \beta_3 \rho}\right), &
+    \text{size}_2 &= n_2 f_2 + (1-f_2)\beta_2 + w, \\
+    \text{size}_3 &= \left\lceil \frac{S}{n_1 n_2 \rho} \right\rceil \beta_3 + w, \\
+    A(S) &= \text{size}_1 \cdot \text{size}_2 \cdot \text{size}_3 \cdot b + 16S + 8dS .
+    \label{eq:subgrid_area_3d}
+\end{align}
+In both cases, as in the 2D case above, the final $16S + 8dS$ term folds the point buffer's own byte footprint into $A(S)$ alongside the subgrid itself.
+
+\subsection{Heuristic}
 
 %\subsection{Subproblem subgrid}
 %
