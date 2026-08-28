@@ -28,6 +28,12 @@ The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $N/n_{\text{t
 
 This motivates the introduction of a new heuristic that sets an optimal number of subproblems per thread and limits $S_{\max}$ relative to the available cache size.
 
+\subsection{Distributions}
+\label{sec:distributions}
+To assess the impact of $S_{\max}$, we evaluate it under two point distributions: uniform, where points are drawn independently from a uniform distribution over the domain, and exponential, where points are clustered around the 0 with density falling off exponentially. Under a uniform distribution the nonuniform points spread evenly across bins, so each subproblem's contributing subgrid remains compact and roughly constant in size. 
+Under an exponential distribution, the majority of points concentrate near the origin, so most bins are densely populated and the subgrid each subproblem must write to is small and spatially compact. However, the tails of the distribution place a small number of points far from the centre; these scattered points fall into bins that are spread across the domain, producing a handful of subproblems whose contributing subgrid spans a disproportionately large region. The resulting variance in subgrid size means that a value of $S_{\max}$ that is well-suited to the dense core may be inadequate for the outlying subproblems, and vice versa.
+
+This distinction matters because real-world applications often process clustered data. In interferometric radio astronomy, for example, \texttt{fftvis}~\cite{fftvis} uses FINUFFT to compute visibilities from antenna pairs. Short baselines between nearby antennas produce many closely spaced measurement points, while long baselines between distant antennas produce only a few points spread far apart. The resulting data therefore has dense clusters alongside sparse outliers, which is precisely the structure that an exponential distribution models.
 \subsection{1D Transforms}
 
 We ran a Gaussian-process search over $S_{\max}$ for the single-threaded, double-precision case as well (Table~\ref{tab:maxsp_1d_gp_search}). It shows that $S_{\max}$ does not affect throughput much in this regime: the tuned value differs in throughput from the fixed legacy default of 10,000 by only a small margin. In conclusion, the legacy default can be left as it is for 1D transforms.
@@ -101,6 +107,183 @@ First, performance of \texttt{add\_wrapped\_subgrid} is determined by the total 
 
 With a critical section, this step's performance depends on the number of threads and subproblems. With atomic stores, however, contention instead depends on the overlapping area between subgrids. There is no hardware instruction for atomic addition of floats or doubles, so OpenMP's implementation of \texttt{\#pragma omp atomic} falls back to a compare-and-swap instruction. It works as follows: the old value is first loaded from the grid, then a new value is stored via a CAS that checks whether the old value is still present; a subsequent branch checks whether the CAS succeeded, and on failure the operation is retried. This gives the accumulation step the lock-free property, per the definition in~\cite[Sec.~3.7, p.~60]{herlihyshavit2012}. The overlapping area between subgrids therefore directly determines the amount of contention, and with it the expected number of retries.
 
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/maxsp_wrapped_subgrid/wrapped_cycles.pdf}
+    \caption{\texttt{add\_wrapped\_subgrid} cycle count as a function of $S_{\max}$, measured with \texttt{perf record -e cycles} for a 2D double-precision type-1 transform at $\approx 500$\,MiB of nonuniform-point data (density 1, multi-threaded)}
+    \label{fig:maxsp_wrapped_cycles}
+\end{figure}
+
+Figure~\ref{fig:maxsp_wrapped_cycles} shows that the adding overhead grows as $S_{\max}$ shrinks: a smaller $S_{\max}$ means more, smaller subproblems for the same total point count, so the fixed per-subproblem cost of accumulating a subgrid into the global grid is paid more often. It also means more subgrids are overlapping at any given time, so under atomic stores the contention discussed above grows too, further adding to the accumulation cost at small $S_{\max}$. Because this accumulation cost dominates at small $S_{\max}$ and is itself governed by memory traffic -- writing (and, under contention, re-reading) subgrid cells rather than performing arithmetic -- the spreading pipeline as a whole is memory bound in this regime. This means that, at small $S_{\max}$, no amount of optimising the \emph{spreading} step's own computation can improve overall performance: the accumulation step's memory traffic is the bottleneck, not the arithmetic spreading does.
+
+\subsection{Reducing memory load during spreading}
+
+Since both the accumulation cost and the contention between subproblems are driven by how much subgrids overlap, it is important to understand how subgrids overlap with one another before this memory load can be reduced. Figure~\ref{fig:subgrid_overlap} below shows an example of the first 20 subgrids written onto a grid, illustrating this overlap directly.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figures/bin_size/first20_subgrids_123x42_100k_blue.png}
+    \caption{Bounding boxes of the first 20 subgrids written back to the shared global grid, at bin size $123\times42$, $n_{\text{side}}=10000$, $S_{\max}=10^5$ (fixed), illustrating how neighbouring subgrids overlap along both axes.}
+    \label{fig:subgrid_overlap}
+\end{figure}
+A subgrid is a cuboid that tightly wraps all the points assigned to its subproblem, padded by the kernel width as described above. Subproblems themselves are picked from a partially bin-sorted array of points: rather than fully sorting all points by position, the points are only sorted into coarse bins, and each subproblem is then formed by taking a contiguous run of $S_{\max}$ points from this partially-sorted array. Figure~\ref{fig:subgrid_cuboid_regular} shows a typical example: since the run of points making up the subproblem is spatially localised, its bounding cuboid is a single compact rectangle. Because the fine grid is periodic, however, a subproblem whose points straddle the domain boundary produces a cuboid that must wrap around to the opposite edge, as in Figure~\ref{fig:subgrid_cuboid_wrapping} -- rather than one compact rectangle, the cuboid is effectively split across both edges of the domain.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/bin_size/subgrid_cuboid_regular.png}
+        \caption{Regular (non-wrapping) subgrid}
+        \label{fig:subgrid_cuboid_regular}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/bin_size/subgrid_cuboid_wrapping.png}
+        \caption{Subgrid wrapping around the domain boundary}
+        \label{fig:subgrid_cuboid_wrapping}
+    \end{subfigure}
+    \caption{Points belonging to one subproblem (red) within the full set of nonuniform points (coloured by position in the sorted array). (a) A regular subproblem, whose points are spatially compact and whose bounding cuboid is a single rectangle. (b) A subproblem whose points straddle the domain boundary, whose bounding cuboid wraps around and is effectively split across both edges of the domain.}
+    \label{fig:subgrid_cuboid_examples}
+\end{figure}
+
+Wrapping cuboids are the main driver of the contention seen at small $S_{\max}$ in 2D transforms: because a wrapping cuboid spans the full width or height of the domain rather than a small compact region, it overlaps with a much larger number of other subgrids than a regular cuboid does, and every one of those overlaps is a potential source of write contention during accumulation. This effect grows as $S_{\max}$ shrinks, since a smaller $S_{\max}$ both increases the total number of subproblems and increases the fraction of them that happen to fall across the boundary. The fix is to split a wrapping cuboid in two at the domain boundary, so that each half is once again a single compact, non-wrapping subgrid; this trades one wrapping cuboid with many overlaps for two ordinary cuboids that only overlap their own local neighbours.
+
+\subsection{Cache aware subproblem}
+
+During gathering, each subproblem takes its $S \le S_{\max}$ assigned points and loads them into a local point buffer: each point contributes a complex strength of 16 bytes (two doubles, for the real and imaginary parts) plus 8 bytes per coordinate axis (one double per dimension). This point buffer is therefore predictable in size, scaling linearly with $S$, unlike the subgrid described above, whose size also depends on how those $S$ points happen to be distributed in space.
+
+Once gathered, the buffer is resized to the subgrid size before spreading begins. This subgrid size can be estimated in 2D using the same closed-form expression the implementation itself uses: writing $n_1$ for the fine-grid extent along the fastest axis, $\beta_1, \beta_2$ for the bin sizes used during sorting along each axis, $\rho$ for the point density, $w$ for the kernel width, and $b$ for the number of bytes needed to store one fine-grid cell,
+\begin{align}
+    f &= \min\!\left(1,\; \frac{S}{n_1 \beta_2 \rho}\right), \\
+    \text{size}_1 &= n_1 f + (1-f)\beta_1 + w, \\
+    \text{size}_2 &= \left\lceil \frac{S}{n_1 \beta_2 \rho} \right\rceil \beta_2 + w, \\
+    A(S) &= \text{size}_1 \cdot \text{size}_2 \cdot b + 16S + 8dS .
+    \label{eq:subgrid_area_2d}
+\end{align}
+The last term converts the point buffer's own byte footprint described above (16 bytes per point for the strength plus 8 bytes per point per dimension $d$) into the same units as the subgrid area, so that $A(S)$ reflects the combined cache footprint of both buffers together, not just the subgrid.
+
+The cache budget $A(S)$ is checked against depends on how many cores the transform actually uses. When a transform uses all available cores, every thread has exclusive use of only its own private L2 cache, so $A(S)$ should fit entirely within one core's L2 to avoid spilling into slower shared memory. When fewer cores than are available are in use, however, each active thread can draw on a correspondingly larger share of the shared L3 cache, since it no longer has to divide that cache among as many competing threads; in that case $A(S)$ is instead checked against a proportional fraction of L3 rather than against L2.
+
+Before each transform, $S_{\max}$ itself is chosen by a binary search over candidate subproblem sizes, evaluating $A(S)$ at each step, for the largest $S_{\max}$ that still fits within the target cache budget for that transform's thread count.
+
+\subsection{Final 2D Results}
+
+Across the range of 2D configurations tested -- varying point density, grid aspect ratio, and total problem size, all at a moderate thread count -- the cache-aware auto heuristic typically improves throughput over the legacy fixed default by roughly 4--9\%, as summarised in Table~\ref{tab:maxsp_2d_final_results}. The one exception is the smallest problem size tested (100\,MiB), where auto instead loses $2.0\%$ to the legacy default.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|l|l|r|}
+        \hline
+        \textbf{Density} & \textbf{$N_1 \times N_2$} & \textbf{Auto $S_{\max}$} & \textbf{Throughput change} \\
+        \hline
+        0.25 & $11{,}586 \times 11{,}586$ & 2{,}234 & $+4.0\%$ \\
+        \hline
+        1    & $5{,}700 \times 5{,}700$   & 7{,}409 & $+4.2\%$ \\
+        \hline
+        1    & $23{,}168 \times 1{,}448$  & 7{,}201 & $+4.1\%$ \\
+        \hline
+        1    & $22{,}960 \times 1{,}435$  & 7{,}132 & $+5.4\%$ \\
+        \hline
+        0.5  & $8{,}192 \times 8{,}192$   & 4{,}181 & $+6.0\%$ \\
+        \hline
+        1    & $1{,}810 \times 1{,}810$   & 8{,}439 & $-2.0\%$ \\
+        \hline
+        1    & $5{,}793 \times 5{,}793$   & 7{,}134 & $+9.8\%$ \\
+        \hline
+    \end{tabular}
+    \caption{Amortized throughput improvement of the auto heuristic over the legacy fixed default ($S_{\max}=10{,}000$) across 2D type-1 double-precision configurations, all multi-threaded, on the same 16-core machine used for the earlier 2D searches.}
+    \label{tab:maxsp_2d_final_results}
+\end{table}
+
+The $100\,\text{MiB}$ row's loss is a small-problem effect rather than a cache-fit failure: at this size, the whole transform's nonuniform-point data is already only about twice the CPU's $50\,\text{MiB}$ L3 cache, so there simply is not much total work to spread across subproblems. The auto heuristic's cache-fit computation nonetheless yields a smaller $S_{\max}$ here than the legacy default, which means \emph{more} subproblems than the legacy heuristic would create for the same problem -- and with so little total work to amortise it over, the extra per-subproblem scheduling and synchronisation overhead ends up outweighing whatever cache-locality benefit those smaller subproblems bring.
+
+The same configurations were also re-tested in single precision and, separately, with points drawn from an exponential rather than a uniform distribution (clustered near the origin), to check whether the double-precision, uniform-distribution result above generalises.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|l|l|r|}
+        \hline
+        \textbf{Density} & \textbf{$N_1 \times N_2$} & \textbf{Auto $S_{\max}$} & \textbf{Throughput change} \\
+        \hline
+        1 & $4{,}048 \times 4{,}048$   & 8{,}092  & $+2.5\%$ \\
+        \hline
+        1 & $8{,}096 \times 2{,}024$   & 10{,}067 & $-0.6\%$ \\
+        \hline
+        1 & $16{,}192 \times 1{,}012$  & 9{,}985  & $-0.3\%$ \\
+        \hline
+        1 & $32{,}384 \times 506$      & 9{,}984  & $+1.3\%$ \\
+        \hline
+        1 & $1{,}810 \times 1{,}810$   & 13{,}054 & $+2.4\%$ \\
+        \hline
+        1 & $5{,}793 \times 5{,}793$   & 9{,}984  & $+0.4\%$ \\
+        \hline
+    \end{tabular}
+    \caption{Same shape/size sweep as Table~\ref{tab:maxsp_2d_final_results}, repeated in single precision.}
+    \label{tab:maxsp_2d_float_results}
+\end{table}
+
+In single precision the auto heuristic still shows a net improvement, but a smaller one: results range from $-0.6\%$ to $+2.5\%$, compared to the consistent $+4$--$9\%$ win seen in double precision at matching sizes and shapes. This lines up with a direct double-vs-float comparison at the same 1\,GiB configuration, where double gained $+9.8\%$ but float gained only $+0.4\%$: precision changes how much auto helps, though it still helps in both cases.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|l|l|r|}
+        \hline
+        \textbf{Density} & \textbf{$N_1 \times N_2$} & \textbf{Auto $S_{\max}$} & \textbf{Throughput change} \\
+        \hline
+        1 & $4{,}048 \times 4{,}048$   & 7{,}409 & $+2.9\%$ \\
+        \hline
+        1 & $8{,}096 \times 2{,}024$   & 7{,}400 & $+3.6\%$ \\
+        \hline
+        1 & $16{,}192 \times 1{,}012$  & 7{,}132 & $+5.8\%$ \\
+        \hline
+        1 & $32{,}384 \times 506$      & 7{,}130 & $+3.6\%$ \\
+        \hline
+        1 & $1{,}810 \times 1{,}810$   & 8{,}439 & $-2.7\%$ \\
+        \hline
+        1 & $5{,}793 \times 5{,}793$   & 7{,}134 & $+5.5\%$ \\
+        \hline
+    \end{tabular}
+    \caption{Same shape/size sweep as Table~\ref{tab:maxsp_2d_final_results}, repeated in double precision with points drawn from an exponential distribution instead of uniform.}
+    \label{tab:maxsp_2d_exp_results}
+\end{table}
+
+Under the exponential distribution the result stays close to the uniform-distribution case: mostly a $+2.9$--$5.8\%$ win, with the same small loss seen under uniform sampling too ($-2.0\%$ there, $-2.7\%$ here). This means that the disproportionately large subgrids produced by the sparse, outlying regions of the exponential distribution (Section~\ref{sec:distributions}) do not end up slowing the transform down: despite their size variance, the auto heuristic performs as well under clustered data as it does under uniformly spread data.
+
+\subsection{3d Transforms}
+
+For 3D transforms, choosing $S_{\max}$ is in one sense an easier problem than for 1D or 2D: rather than balancing a cache-fit sweet spot against per-subproblem overhead, the Gaussian-process search consistently drove towards the largest $S_{\max}$ tried in every configuration -- up to and including $S_{\max}=M$ itself, i.e.\ no subproblem partitioning at all. Where 1D and 2D show a genuine interior optimum (throughput rises, then falls, as $S_{\max}$ grows), 3D shows no such turning point in the range tested: bigger is simply better, all the way to the point where the whole transform becomes a single subproblem. This turns the search from "find the right value" into "use as large a value as memory allows," a much simpler rule to apply.
+
+Table~\ref{tab:subgrid_overlap} explains why. Dumping every subgrid's bounding box (via \texttt{--spread\_debug 2}) for the same $M=1{,}000{,}000$ points, single-threaded, split evenly across 1, 2, and 3 dimensions, and summing the pairwise overlap between every pair of subgrids' bounding boxes shows that the total overlap area grows far faster than the number of dimensions alone would suggest.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|r|r|r|r|r|}
+        \hline
+        \textbf{Dim} & \textbf{Subgrids} & \textbf{Overlapping pairs} & \textbf{Total overlap area} & \textbf{Sum of subgrid areas} & \textbf{Overlap ratio} \\
+        \hline
+        1D & 169   & 168 (1.2\%)     & 3{,}863           & 1{,}253{,}869   & $0.31\%$ \\
+        \hline
+        2D & 565   & 4{,}813 (3.0\%) & 36{,}392{,}611    & 11{,}341{,}268  & $321\%$ \\
+        \hline
+        3D & 4{,}976 & 387{,}245 (3.1\%) & 1{,}640{,}353{,}996 & 123{,}526{,}752 & $1{,}328\%$ \\
+        \hline
+    \end{tabular}
+    \caption{Pairwise overlap between subgrid bounding boxes for the same $M=1{,}000{,}000$-point transform, split into 1D, 2D, and 3D (single-threaded, auto $S_{\max}$). ``Overlap ratio'' is total overlap area divided by the sum of all subgrid areas.}
+    \label{tab:subgrid_overlap}
+\end{table}
+
+In 1D, overlap is negligible (0.31\% of total subgrid area) -- essentially only immediate neighbours share a thin padding strip. In 2D the total overlap area already exceeds the sum of all subgrid areas (321\%), and in 3D it reaches over thirteen times the total subgrid area (1{,}328\%), meaning most fine-grid cells near a subproblem boundary are being written to by many overlapping subgrids at once, not just two. This confirms that spreading in 3D is dominated by memory traffic -- writing (and, under atomic contention, re-reading) the same cells repeatedly across many overlapping subgrids -- rather than by the arithmetic cost of the spreading kernel itself. Once a step is this memory-bound, reducing the number of subproblems (growing $S_{\max}$) straightforwardly reduces the redundant memory traffic with no offsetting downside, which is exactly why the optimum keeps climbing instead of curving back down the way it does in 2D.
+
+Growing overlap also has a second, more indirect cost. Smaller $S_{\max}$ means more, smaller subgrids, and therefore more concurrent overlapping writes to the same fine-grid cells; each of those writes is guarded by a compare-and-swap (CAS), so as contention grows, a growing fraction of CAS attempts fail and must be retried. Every retry re-executes the branch that checks whether the CAS succeeded, so as the failure rate climbs, that branch is mispredicted more often too. Figure~\ref{fig:maxsp_branchmiss_3d} confirms this trend, showing branch-misses growing steadily as $S_{\max}$ shrinks.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/maxsp_branchmiss_3d/branchmiss_throughput.pdf}
+    \caption{$S_{\max}$ vs.\ branch-misses and amortized throughput for a 3D double-precision type-1 transform at $\approx 2$\,GiB of nonuniform-point data ($N_1{=}N_2{=}N_3{=}378$, $M=54{,}010{,}152$, density~1), measured with \texttt{perf stat -e branches,branch-misses} on an Icelake node (64 threads). Average over 15 runs.}
+    \label{fig:maxsp_branchmiss_3d}
+\end{figure}
+\subsection{Final 3d results}
 
 %\subsection{Subproblem subgrid}
 %
