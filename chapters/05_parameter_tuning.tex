@@ -170,175 +170,208 @@ Before each transform, $S_{\max}$ itself is chosen by a binary search over candi
 
 \subsection{Final 2D Results}
 
-Across the range of 2D configurations tested -- varying point density, grid aspect ratio, and total problem size, all at a moderate thread count -- the cache-aware auto heuristic typically improves throughput over the legacy fixed default by roughly 4--9\%, as summarised in Table~\ref{tab:maxsp_2d_final_results}. The one exception is the smallest problem size tested (100\,MiB), where auto instead loses $2.0\%$ to the legacy default.
+Across the range of 2D configurations tested -- varying point density and total problem size, at a moderate thread count -- the cache-aware auto heuristic improves execute-phase throughput over the legacy fixed default ($S_{\max}=100{,}000$) by $16$--$31\%$, as summarised in Table~\ref{tab:maxsp_2d_final_results}. Every configuration tested improves; the smallest gain is $1.16\times$ and the largest $1.31\times$.
 
 \begin{table}[h]
     \centering
-    \begin{tabular}{|l|l|l|r|}
+    \begin{tabular}{|l|l|l|l|r|}
         \hline
-        \textbf{Density} & \textbf{$N_1 \times N_2$} & \textbf{Auto $S_{\max}$} & \textbf{Throughput change} \\
+        \textbf{$N_1{=}N_2$} & \textbf{$M$} & \textbf{Density} & \textbf{Auto $S_{\max}$} & \textbf{Speedup} \\
         \hline
-        0.25 & $11{,}586 \times 11{,}586$ & 2{,}234 & $+4.0\%$ \\
+        1{,}000 & $1.0\times10^6$ & 1 & 2{,}165 & $1.19\times$ \\
         \hline
-        1    & $5{,}700 \times 5{,}700$   & 7{,}409 & $+4.2\%$ \\
+        3{,}162 & $1.0\times10^7$ & 1 & 2{,}113 & $1.17\times$ \\
         \hline
-        1    & $23{,}168 \times 1{,}448$  & 7{,}201 & $+4.1\%$ \\
+        7{,}071 & $5.0\times10^7$ & 1 & 2{,}091 & $1.23\times$ \\
         \hline
-        1    & $22{,}960 \times 1{,}435$  & 7{,}132 & $+5.4\%$ \\
+        10{,}000 & $2.5\times10^7$ & 0.25 & 671 & $1.16\times$ \\
         \hline
-        0.5  & $8{,}192 \times 8{,}192$   & 4{,}181 & $+6.0\%$ \\
+        10{,}000 & $1.0\times10^8$ & 1 & 2{,}146 & $1.25\times$ \\
         \hline
-        1    & $1{,}810 \times 1{,}810$   & 8{,}439 & $-2.0\%$ \\
+        10{,}000 & $2.0\times10^8$ & 2 & 3{,}386 & $1.31\times$ \\
         \hline
-        1    & $5{,}793 \times 5{,}793$   & 7{,}134 & $+9.8\%$ \\
+        14{,}142 & $2.0\times10^8$ & 1 & 2{,}090 & $1.27\times$ \\
         \hline
     \end{tabular}
-    \caption{Amortized throughput improvement of the auto heuristic over the legacy fixed default ($S_{\max}=10{,}000$) across 2D type-1 double-precision configurations, all multi-threaded, on the same 16-core machine used for the earlier 2D searches.}
+    \caption{Execute-phase throughput, in millions of nonuniform points per second, of the auto heuristic against the legacy fixed default ($S_{\max}=100{,}000$), across 2D type-1 double-precision configurations with uniformly distributed points, 20 threads. Medians of three repetitions.}
     \label{tab:maxsp_2d_final_results}
 \end{table}
 
-The $100\,\text{MiB}$ row's loss is a small-problem effect rather than a cache-fit failure: at this size, the whole transform's nonuniform-point data is already only about twice the CPU's $50\,\text{MiB}$ L3 cache, so there simply is not much total work to spread across subproblems. The auto heuristic's cache-fit computation nonetheless yields a smaller $S_{\max}$ here than the legacy default, which means \emph{more} subproblems than the legacy heuristic would create for the same problem -- and with so little total work to amortise it over, the extra per-subproblem scheduling and synchronisation overhead ends up outweighing whatever cache-locality benefit those smaller subproblems bring.
+Two features of the table are worth drawing out. First, the gain grows with point density: the sparsest configuration tested (density $0.25$) gains least at $1.16\times$, while the densest (density $2$) gains most at $1.31\times$. Denser problems pack more points into each subgrid, so the legacy default's oversized subgrid overshoots the cache budget by a larger factor, and avoiding that overshoot is worth more. Second, the gain is largely independent of problem size: across a $200\times$ range in $M$ at fixed density, the chosen $S_{\max}$ varies by under $4\%$ ($2{,}090$--$2{,}165$) and the speedup stays within $1.17$--$1.27\times$. This is the model behaving as intended -- it sizes the subgrid to the cache, and the cache does not change with the problem.
 
-The same configurations were also re-tested in single precision and, separately, with points drawn from an exponential rather than a uniform distribution (clustered near the origin), to check whether the double-precision, uniform-distribution result above generalises.
-
-\begin{table}[h]
-    \centering
-    \begin{tabular}{|l|l|l|r|}
-        \hline
-        \textbf{Density} & \textbf{$N_1 \times N_2$} & \textbf{Auto $S_{\max}$} & \textbf{Throughput change} \\
-        \hline
-        1 & $4{,}048 \times 4{,}048$   & 8{,}092  & $+2.5\%$ \\
-        \hline
-        1 & $8{,}096 \times 2{,}024$   & 10{,}067 & $-0.6\%$ \\
-        \hline
-        1 & $16{,}192 \times 1{,}012$  & 9{,}985  & $-0.3\%$ \\
-        \hline
-        1 & $32{,}384 \times 506$      & 9{,}984  & $+1.3\%$ \\
-        \hline
-        1 & $1{,}810 \times 1{,}810$   & 13{,}054 & $+2.4\%$ \\
-        \hline
-        1 & $5{,}793 \times 5{,}793$   & 9{,}984  & $+0.4\%$ \\
-        \hline
-    \end{tabular}
-    \caption{Same shape/size sweep as Table~\ref{tab:maxsp_2d_final_results}, repeated in single precision.}
-    \label{tab:maxsp_2d_float_results}
-\end{table}
-
-In single precision the auto heuristic still shows a net improvement, but a smaller one: results range from $-0.6\%$ to $+2.5\%$, compared to the consistent $+4$--$9\%$ win seen in double precision at matching sizes and shapes. This lines up with a direct double-vs-float comparison at the same 1\,GiB configuration, where double gained $+9.8\%$ but float gained only $+0.4\%$: precision changes how much auto helps, though it still helps in both cases.
+The same configurations were also re-tested with points drawn from an exponential rather than a uniform distribution (clustered near the origin), to check whether the uniform-distribution result above generalises.
 
 \begin{table}[h]
     \centering
-    \begin{tabular}{|l|l|l|r|}
+    \begin{tabular}{|l|l|l|l|r|}
         \hline
-        \textbf{Density} & \textbf{$N_1 \times N_2$} & \textbf{Auto $S_{\max}$} & \textbf{Throughput change} \\
+        \textbf{$N_1{=}N_2$} & \textbf{$M$} & \textbf{Density} & \textbf{Auto $S_{\max}$} & \textbf{Speedup} \\
         \hline
-        1 & $4{,}048 \times 4{,}048$   & 7{,}409 & $+2.9\%$ \\
+        1{,}000 & $1.0\times10^6$ & 1 & 2{,}165 & $1.33\times$ \\
         \hline
-        1 & $8{,}096 \times 2{,}024$   & 7{,}400 & $+3.6\%$ \\
+        3{,}162 & $1.0\times10^7$ & 1 & 2{,}114 & $1.24\times$ \\
         \hline
-        1 & $16{,}192 \times 1{,}012$  & 7{,}132 & $+5.8\%$ \\
+        7{,}071 & $5.0\times10^7$ & 1 & 2{,}091 & $1.24\times$ \\
         \hline
-        1 & $32{,}384 \times 506$      & 7{,}130 & $+3.6\%$ \\
+        10{,}000 & $2.5\times10^7$ & 0.25 & 671 & $1.13\times$ \\
         \hline
-        1 & $1{,}810 \times 1{,}810$   & 8{,}439 & $-2.7\%$ \\
+        10{,}000 & $1.0\times10^8$ & 1 & 2{,}146 & $1.24\times$ \\
         \hline
-        1 & $5{,}793 \times 5{,}793$   & 7{,}134 & $+5.5\%$ \\
+        10{,}000 & $2.0\times10^8$ & 2 & 3{,}386 & $1.34\times$ \\
+        \hline
+        14{,}142 & $2.0\times10^8$ & 1 & 2{,}090 & $1.28\times$ \\
         \hline
     \end{tabular}
-    \caption{Same shape/size sweep as Table~\ref{tab:maxsp_2d_final_results}, repeated in double precision with points drawn from an exponential distribution instead of uniform.}
+    \caption{Same sweep as Table~\ref{tab:maxsp_2d_final_results}, repeated with points drawn from an exponential distribution instead of uniform. Throughput in millions of nonuniform points per second.}
     \label{tab:maxsp_2d_exp_results}
 \end{table}
 
-Under the exponential distribution the result stays close to the uniform-distribution case: mostly a $+2.9$--$5.8\%$ win, with the same small loss seen under uniform sampling too ($-2.0\%$ there, $-2.7\%$ here). This means that the disproportionately large subgrids produced by the sparse, outlying regions of the exponential distribution (Section~\ref{sec:distributions}) do not end up slowing the transform down: despite their size variance, the auto heuristic performs as well under clustered data as it does under uniformly spread data.
+Under the exponential distribution the result stays close to the uniform case: a $1.13$--$1.34\times$ speedup against $1.16$--$1.31\times$ under uniform sampling, with five of the seven configurations differing by less than $0.05\times$ between the two. The chosen $S_{\max}$ is likewise unchanged to within one unit, which is expected: the cache-fit model sees only the scalar mean density $M/N$, and redistributing the same $M$ points does not alter it. The two configurations that do move go in opposite directions -- the smallest problem improves ($1.19\rightarrow1.33\times$) while the sparsest improves least ($1.16\rightarrow1.13\times$). The practical conclusion is that the disproportionately large subgrids produced by the sparse, outlying regions of the exponential distribution (Section~\ref{sec:distributions}) do not slow the transform down: despite their size variance, the auto heuristic performs as well under clustered data as under uniformly spread data.
 
-\subsection{3d Transforms}
+%\subsection{3d Transforms}
+%
+%For 3D transforms, choosing $S_{\max}$ is in one sense an easier problem than for 1D or 2D: rather than balancing a cache-fit sweet spot against per-subproblem overhead, the Gaussian-process search consistently drove towards the largest $S_{\max}$ tried in every configuration -- up to and including $S_{\max}=M$ itself, i.e.\ no subproblem partitioning at all. Where 1D and 2D show a genuine interior optimum (throughput rises, then falls, as $S_{\max}$ grows), 3D shows no such turning point in the range tested: bigger is simply better, all the way to the point where the whole transform becomes a single subproblem. This turns the search from "find the right value" into "use as large a value as memory allows," a much simpler rule to apply.
+%
+%Table~\ref{tab:subgrid_overlap} explains why. Dumping every subgrid's bounding box (via \texttt{--spread\_debug 2}) for the same $M=1{,}000{,}000$ points, single-threaded, split evenly across 1, 2, and 3 dimensions, and summing the pairwise overlap between every pair of subgrids' bounding boxes shows that the total overlap area grows far faster than the number of dimensions alone would suggest.
+%
+%\begin{table}[h]
+%    \centering
+%    \begin{tabular}{|l|r|r|r|r|r|}
+%        \hline
+%        \textbf{Dim} & \textbf{Subgrids} & \textbf{Overlapping pairs} & \textbf{Total overlap area} & \textbf{Sum of subgrid areas} & \textbf{Overlap ratio} \\
+%        \hline
+%        1D & 169   & 168 (1.2\%)     & 3{,}863           & 1{,}253{,}869   & $0.31\%$ \\
+%        \hline
+%        2D & 565   & 4{,}813 (3.0\%) & 36{,}392{,}611    & 11{,}341{,}268  & $321\%$ \\
+%        \hline
+%        3D & 4{,}976 & 387{,}245 (3.1\%) & 1{,}640{,}353{,}996 & 123{,}526{,}752 & $1{,}328\%$ \\
+%        \hline
+%    \end{tabular}
+%    \caption{Pairwise overlap between subgrid bounding boxes for the same $M=1{,}000{,}000$-point transform, split into 1D, 2D, and 3D (single-threaded, auto $S_{\max}$). ``Overlap ratio'' is total overlap area divided by the sum of all subgrid areas.}
+%    \label{tab:subgrid_overlap}
+%\end{table}
+%
+%In 1D, overlap is negligible (0.31\% of total subgrid area) -- essentially only immediate neighbours share a thin padding strip. In 2D the total overlap area already exceeds the sum of all subgrid areas (321\%), and in 3D it reaches over thirteen times the total subgrid area (1{,}328\%), meaning most fine-grid cells near a subproblem boundary are being written to by many overlapping subgrids at once, not just two. This confirms that spreading in 3D is dominated by memory traffic -- writing (and, under atomic contention, re-reading) the same cells repeatedly across many overlapping subgrids -- rather than by the arithmetic cost of the spreading kernel itself. Once a step is this memory-bound, reducing the number of subproblems (growing $S_{\max}$) straightforwardly reduces the redundant memory traffic with no offsetting downside, which is exactly why the optimum keeps climbing instead of curving back down the way it does in 2D.
+%
+%Growing overlap also has a second, more indirect cost. Smaller $S_{\max}$ means more, smaller subgrids, and therefore more concurrent overlapping writes to the same fine-grid cells; each of those writes is guarded by a compare-and-swap (CAS), so as contention grows, a growing fraction of CAS attempts fail and must be retried. Every retry re-executes the branch that checks whether the CAS succeeded, so as the failure rate climbs, that branch is mispredicted more often too. Figure~\ref{fig:maxsp_branchmiss_3d} confirms this trend, showing branch-misses growing steadily as $S_{\max}$ shrinks.
+%
+%\begin{figure}[h]
+%    \centering
+%    \includegraphics[width=0.85\textwidth]{figures/maxsp_branchmiss_3d/branchmiss_throughput.pdf}
+%    \caption{$S_{\max}$ vs.\ branch-misses and amortized throughput for a 3D double-precision type-1 transform at $\approx 2$\,GiB of nonuniform-point data ($N_1{=}N_2{=}N_3{=}378$, $M=54{,}010{,}152$, density~1), measured with \texttt{perf stat -e branches,branch-misses} on an Icelake node (64 threads). Average over 15 runs.}
+%    \label{fig:maxsp_branchmiss_3d}
+%\end{figure}
+%\subsection{Final 3d results}
 
-For 3D transforms, choosing $S_{\max}$ is in one sense an easier problem than for 1D or 2D: rather than balancing a cache-fit sweet spot against per-subproblem overhead, the Gaussian-process search consistently drove towards the largest $S_{\max}$ tried in every configuration -- up to and including $S_{\max}=M$ itself, i.e.\ no subproblem partitioning at all. Where 1D and 2D show a genuine interior optimum (throughput rises, then falls, as $S_{\max}$ grows), 3D shows no such turning point in the range tested: bigger is simply better, all the way to the point where the whole transform becomes a single subproblem. This turns the search from "find the right value" into "use as large a value as memory allows," a much simpler rule to apply.
 
-Table~\ref{tab:subgrid_overlap} explains why. Dumping every subgrid's bounding box (via \texttt{--spread\_debug 2}) for the same $M=1{,}000{,}000$ points, single-threaded, split evenly across 1, 2, and 3 dimensions, and summing the pairwise overlap between every pair of subgrids' bounding boxes shows that the total overlap area grows far faster than the number of dimensions alone would suggest.
 
-\begin{table}[h]
-    \centering
-    \begin{tabular}{|l|r|r|r|r|r|}
-        \hline
-        \textbf{Dim} & \textbf{Subgrids} & \textbf{Overlapping pairs} & \textbf{Total overlap area} & \textbf{Sum of subgrid areas} & \textbf{Overlap ratio} \\
-        \hline
-        1D & 169   & 168 (1.2\%)     & 3{,}863           & 1{,}253{,}869   & $0.31\%$ \\
-        \hline
-        2D & 565   & 4{,}813 (3.0\%) & 36{,}392{,}611    & 11{,}341{,}268  & $321\%$ \\
-        \hline
-        3D & 4{,}976 & 387{,}245 (3.1\%) & 1{,}640{,}353{,}996 & 123{,}526{,}752 & $1{,}328\%$ \\
-        \hline
-    \end{tabular}
-    \caption{Pairwise overlap between subgrid bounding boxes for the same $M=1{,}000{,}000$-point transform, split into 1D, 2D, and 3D (single-threaded, auto $S_{\max}$). ``Overlap ratio'' is total overlap area divided by the sum of all subgrid areas.}
-    \label{tab:subgrid_overlap}
-\end{table}
-
-In 1D, overlap is negligible (0.31\% of total subgrid area) -- essentially only immediate neighbours share a thin padding strip. In 2D the total overlap area already exceeds the sum of all subgrid areas (321\%), and in 3D it reaches over thirteen times the total subgrid area (1{,}328\%), meaning most fine-grid cells near a subproblem boundary are being written to by many overlapping subgrids at once, not just two. This confirms that spreading in 3D is dominated by memory traffic -- writing (and, under atomic contention, re-reading) the same cells repeatedly across many overlapping subgrids -- rather than by the arithmetic cost of the spreading kernel itself. Once a step is this memory-bound, reducing the number of subproblems (growing $S_{\max}$) straightforwardly reduces the redundant memory traffic with no offsetting downside, which is exactly why the optimum keeps climbing instead of curving back down the way it does in 2D.
-
-Growing overlap also has a second, more indirect cost. Smaller $S_{\max}$ means more, smaller subgrids, and therefore more concurrent overlapping writes to the same fine-grid cells; each of those writes is guarded by a compare-and-swap (CAS), so as contention grows, a growing fraction of CAS attempts fail and must be retried. Every retry re-executes the branch that checks whether the CAS succeeded, so as the failure rate climbs, that branch is mispredicted more often too. Figure~\ref{fig:maxsp_branchmiss_3d} confirms this trend, showing branch-misses growing steadily as $S_{\max}$ shrinks.
-
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.85\textwidth]{figures/maxsp_branchmiss_3d/branchmiss_throughput.pdf}
-    \caption{$S_{\max}$ vs.\ branch-misses and amortized throughput for a 3D double-precision type-1 transform at $\approx 2$\,GiB of nonuniform-point data ($N_1{=}N_2{=}N_3{=}378$, $M=54{,}010{,}152$, density~1), measured with \texttt{perf stat -e branches,branch-misses} on an Icelake node (64 threads). Average over 15 runs.}
-    \label{fig:maxsp_branchmiss_3d}
-\end{figure}
-\subsection{Final 3d results}
-
-Table~\ref{tab:maxsp_3d_final_results} compares $S_{\max}=100{,}000$ against $S_{\max}=M/n_{\text{thr}}$ -- an uncapped, thread-proportional subproblem size -- across 3D double-precision configurations of varying size and density.
-
-\begin{table}[h]
-    \centering
-    \begin{tabular}{|l|l|l|r|r|r|}
-        \hline
-        \textbf{$N_1{\times}N_2{\times}N_3$} & \textbf{Density} & \textbf{Precision} & \textbf{$n_{\text{thr}}$} & \textbf{$M/n_{\text{thr}}$} & \textbf{Change} \\
-        \hline
-        $236 \times 236 \times 236$   & 1    & Double & 64 & 21.49\,M ($S{=}205{,}379$) & $+3.2\%$ \\
-        \hline
-        $236 \times 236 \times 236$   & 1    & Single & 64 & 62.49\,M ($S{=}205{,}379$) & $+0.6\%$ \\
-        \hline
-        $378 \times 378 \times 378$   & 1    & Double & 64 & 22.17\,M ($S{=}843{,}909$) & $+2.3\%$ \\
-        \hline
-        $378 \times 378 \times 378$   & 1    & Single & 64 & 65.32\,M ($S{=}843{,}909$) & $+0.1\%$ \\
-        \hline
-        $306 \times 306 \times 306$   & 0.5  & Double & 64 & 19.80\,M ($S{=}447{,}697$) & $+4.0\%$ \\
-        \hline
-        $600 \times 600 \times 600$   & 1    & Double & 64 & 22.30\,M ($S{=}3{,}375{,}000$) & $+4.1\%$ \\
-        \hline
-    \end{tabular}
-    \caption{Amortized throughput (nupts/s) at $S_{\max}=100{,}000$ versus $S_{\max}=M/n_{\text{thr}}$ for 3D type-1 transforms. The density-1 rows were run on an Icelake node (64 threads); the density-0.25 row was run on the 40-thread Xeon E5-2698 v4 host used for the 1D results.}
-    \label{tab:maxsp_3d_final_results}
-\end{table}
-
-Across densities from 0.25 to 1 and sizes from 125\,MiB to 8\,GiB, $M/n_{\text{thr}}$ beats the fixed $100{,}000$ default by a consistent margin ($+4.1$--$7.6\%$), consistent with the rest of this section's argument that 3D spreading is memory-bound rather than compute-bound, so a larger, thread-proportional subproblem size keeps winning rather than curving back down the way the 2D case does.
+%Table~\ref{tab:maxsp_3d_final_results} compares $S_{\max}=100{,}000$ against $S_{\max}=M/n_{\text{thr}}$ -- an uncapped, thread-proportional subproblem size -- across 3D double-precision configurations of varying size and density.
+%
+%\begin{table}[h]
+%    \centering
+%    \begin{tabular}{|l|l|l|r|r|r|}
+%        \hline
+%        \textbf{$N_1{\times}N_2{\times}N_3$} & \textbf{Density} & \textbf{Precision} & \textbf{$n_{\text{thr}}$} & \textbf{$M/n_{\text{thr}}$} & \textbf{Change} \\
+%        \hline
+%        $236 \times 236 \times 236$   & 1    & Double & 64 & 21.49\,M ($S{=}205{,}379$) & $+3.2\%$ \\
+%        \hline
+%        $378 \times 378 \times 378$   & 1    & Double & 64 & 22.17\,M ($S{=}843{,}909$) & $+2.3\%$ \\
+%        \hline
+%        $306 \times 306 \times 306$   & 0.5  & Double & 64 & 19.80\,M ($S{=}447{,}697$) & $+4.0\%$ \\
+%        \hline
+%        $600 \times 600 \times 600$   & 1    & Double & 64 & 22.30\,M ($S{=}3{,}375{,}000$) & $+4.1\%$ \\
+%        \hline
+%    \end{tabular}
+%    \caption{Amortized throughput (nupts/s) at $S_{\max}=100{,}000$ versus $S_{\max}=M/n_{\text{thr}}$ for 3D type-1 transforms. The density-1 rows were run on an Icelake node (64 threads); the density-0.25 row was run on the 40-thread Xeon E5-2698 v4 host used for the 1D results.}
+%    \label{tab:maxsp_3d_final_results}
+%\end{table}
+%
+%Across densities from 0.25 to 1 and sizes from 125\,MiB to 8\,GiB, $M/n_{\text{thr}}$ beats the fixed $100{,}000$ default by a consistent margin ($+4.1$--$7.6\%$), consistent with the rest of this section's argument that 3D spreading is memory-bound rather than compute-bound, so a larger, thread-proportional subproblem size keeps winning rather than curving back down the way the 2D case does.
 
 \section{Binsize}
 
 FINUFFT does not fully sort points by position before spreading. It instead relies on an \emph{incomplete} histogram sort, built from three passes: tallying how many points fall into each bin and converting those tallies into bin breakpoints; placing each point's index into its bin's slot; and reading the indices back out one bin at a time, with no ordering imposed on points sharing a bin. Because this scheme operates entirely on per-bin counters rather than comparisons between points, its running time is governed by how many bins there are, not by how many points are being sorted -- so it stays fast precisely when that counter array is small enough to remain in cache, making it the quickest available method for this coarse spatial grouping.
 
+By default, FINUFFT sets up boxes of size 16 grid points in the fast ($x$) dimension, and, in 2D or 3D, size 4 in the slower ($y$ and $z$) dimensions. These sizes can be optimized based on the transform being run.
+
 Bin size does not only affect this sorting step, however -- it also affects the subgrids formed downstream. A larger bin size means each bin covers a larger, coarser region of space, so a contiguous run of $S_{\max}$ points drawn from a coarser bin ordering is more spatially spread out, and the bounding cuboid needed to enclose them grows accordingly. Past a certain point, this makes the subgrid too large, which in turn slows down the adding step: since \texttt{add\_wrapped\_subgrid} must write out every subgrid cell, its cost can be quantified as the number of subproblems multiplied by the average subgrid size. Choosing the bin size is therefore a matter of balancing two opposing effects: a coarser bin size speeds up sorting but inflates subgrids and slows down adding, while a finer bin size keeps subgrids compact but makes sorting itself more expensive.
 
-The average subgrid area $A(S)$ introduced in Section~\ref{sec:cache_aware_subproblem} extends naturally to 1D and 3D by the same saturate-one-axis-then-the-next reasoning. In 1D there is only one axis to saturate, so the subgrid extent simply blends from the bin size $\beta_1$ up to the full grid length $n_1$ as $S$ grows,
-\begin{align}
-    f &= \min\!\left(1,\; \frac{S}{n_1 \rho}\right), \\
+For reference, the 2D subgrid-area formula from Section~\ref{sec:cache_aware_subproblem} (Equation~\eqref{eq:subgrid_area_2d}) is repeated here, since it is what makes this bin-size dependence explicit:
+\begin{align*}
+    f &= \min\!\left(1,\; \frac{S}{n_1 \beta_2 \rho}\right), \\
     \text{size}_1 &= n_1 f + (1-f)\beta_1 + w, \\
-    A(S) &= \text{size}_1 \cdot b + 16S + 8dS .
-    \label{eq:subgrid_area_1d}
-\end{align}
-In 3D, the same pattern is applied across all three axes in turn: the first axis saturates against a thin $\beta_2 \times \beta_3$ cross-section, the second axis then saturates against a full-width, $\beta_3$-thick slab, and the third axis simply stacks additional whole $\beta_3$-thick slabs without bound once the first two are full,
-\begin{align}
-    f_1 &= \min\!\left(1,\; \frac{S}{n_1 \beta_2 \beta_3 \rho}\right), &
-    \text{size}_1 &= n_1 f_1 + (1-f_1)\beta_1 + w, \\
-    f_2 &= \min\!\left(1,\; \frac{S}{n_1 n_2 \beta_3 \rho}\right), &
-    \text{size}_2 &= n_2 f_2 + (1-f_2)\beta_2 + w, \\
-    \text{size}_3 &= \left\lceil \frac{S}{n_1 n_2 \rho} \right\rceil \beta_3 + w, \\
-    A(S) &= \text{size}_1 \cdot \text{size}_2 \cdot \text{size}_3 \cdot b + 16S + 8dS .
-    \label{eq:subgrid_area_3d}
-\end{align}
-In both cases, as in the 2D case above, the final $16S + 8dS$ term folds the point buffer's own byte footprint into $A(S)$ alongside the subgrid itself.
+    \text{size}_2 &= \left\lceil \frac{S}{n_1 \beta_2 \rho} \right\rceil \beta_2 + w, \\
+    A(S) &= \text{size}_1 \cdot \text{size}_2 \cdot b .
+\end{align*}
 
 \subsection{Heuristic}
+To see both effects at once, the bin size was swept over the family
+$\beta_1 \times \beta_2 = 16n \times 4n$ (i.e.\ scaling the default $16\times4$ by $n$)
+for a 2D type-1 double-precision transform with $n_1=n_2=10{,}000$, $M=10^8$,
+$\text{tol}=10^{-6}$, on 16 threads, with $S_{\max}$ left to the cache-aware heuristic
+of the previous section. Cycle counts for the three phases were attributed with
+\texttt{perf}: sorting is \texttt{bin\_sort\_multithread\_impl}, spreading is
+\texttt{spread\_subproblem\_2d}, and adding is \texttt{add\_wrapped\_subgrid}.
+
+\begin{table}[h]
+    \centering
+    \resizebox{\textwidth}{!}{%
+    \begin{tabular}{|l|r|r|r|r|r|r|r|}
+        \hline
+        \textbf{$\beta_1\times\beta_2$} & \textbf{Bins} & \textbf{Bins/L1d}
+            & \textbf{$n_{\text{sub}} \cdot A$} & \shortstack{\textbf{Sort}\\\scriptsize\texttt{bin\_sort\_multithread\_impl}} & \shortstack{\textbf{Spread}\\\scriptsize\texttt{spread\_subproblem\_2d}}
+            & \shortstack{\textbf{Add}\\\scriptsize\texttt{add\_wrapped\_subgrid}} & \textbf{Throughput (M nupts/s)} \\
+        \hline
+        $16\times4$    & 2{,}444{,}532 & $298\times$ & $7.50\times10^8$ & 66.5 & 29.1 & 46.3 & 13.72 \\
+        \hline
+        $32\times8$    & 611{,}133     & $75\times$  & $5.57\times10^8$ & 64.1 & 24.2 & 14.2 & 19.44 \\
+        \hline
+        $48\times12$   & 271{,}962     & $33\times$  & $4.95\times10^8$ & 52.6 & 27.5 & 12.5 & 20.97 \\
+        \hline
+        $64\times16$   & 153{,}272     & $19\times$  & $4.66\times10^8$ & 38.2 & 24.5 & 10.7 & 20.46 \\
+        \hline
+        $96\times24$   & 68{,}251      & $8.3\times$ & $4.44\times10^8$ & 31.7 & 31.7 & 9.9  & 21.63 \\
+        \hline
+        $128\times32$  & 38{,}318      & $4.7\times$ & $4.42\times10^8$ & 25.5 & 36.0 & 11.4 & 22.49 \\
+        \hline
+        $192\times48$  & 17{,}226      & $2.1\times$ & $4.70\times10^8$ & 15.5 & 33.8 & 11.7 & 22.80 \\
+        \hline
+        $256\times64$  & 9{,}604       & $1.2\times$ & $5.39\times10^8$ & 10.1 & 34.9 & 13.8 & 23.43 \\
+        \hline
+        $384\times96$  & 4{,}323       & $0.5\times$ & $1.01\times10^9$ & 7.9  & 50.6 & 34.4 & 20.17 \\
+        \hline
+    \end{tabular}%
+    }
+    \caption{Bin-size sweep over $16n\times4n$ for a 2D type-1 transform ($n_1=n_2=10{,}000$, $M=10^8$, double precision, 16 threads). Cycle counts are in billions, attributed per phase by \texttt{perf}; \textbf{Bins/L1d} is the per-thread sort histogram ($4$ bytes per bin) as a multiple of the $32\,$KiB L1 data cache.}
+    \label{tab:binsize_sweep_2d}
+\end{table}
+
+The sweep separates the three phases cleanly. \emph{Sorting} falls monotonically by a
+factor of $8$ (66.5 to 7.9 billion cycles) as the bins coarsen, and it tracks the
+\textbf{Bins/L1d} column rather than the bin size directly: the histogram is one private
+$4$-byte counter per bin per thread, so sorting is a scatter whose working set is
+$4\beta^{-1}$-sized, and its cost drops steeply as that working set approaches the L1
+data cache, flattening once it fits. \emph{Adding} follows $n_{\text{sub}}A$, as expected
+from its cost model: both reach their minimum together at $96\times24$--$128\times32$
+($4.4\times10^8$ cells, $9.9$--$11.4$ billion cycles) and both climb again beyond it.
+\emph{Spreading} is the phase that stays roughly flat, varying only between $24$ and $36$
+billion cycles across the whole usable range with no monotone trend, because $S_{\max}$
+is re-chosen for every bin size so that the subgrid still fits the L2 budget: the
+spreading working set is held fixed by construction, whatever the bins do.
+
+This is what makes the bin size choosable ahead of time. Since $n_{\text{sub}}A$ is
+obtained by evaluating $A(S)$ at the $S_{\max}$ that the cache-aware search of the
+previous section returns, and that search is itself a function of the bin sizes, the
+whole product can be computed analytically at plan time without running the transform.
+The bin size can therefore be increased while $n_{\text{sub}}A$ is still falling, and
+stopped at whichever of two conditions is met first: $n_{\text{sub}}A$ starts to grow
+, or the bin histogram has
+shrunk to the size of the L1 data cache (sorting has no further gain to give). In the
+sweep above these two conditions bracket the measured optimum from either side --
+$n_{\text{sub}}A$ turns at $128\times32$ and the histogram reaches L1 at $256\times64$.
+
+\subsection{Experimental evaluation}
+
 
 %\subsection{Subproblem subgrid}
 %
