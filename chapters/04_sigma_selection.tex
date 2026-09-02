@@ -9,7 +9,6 @@ The upsampling factor $\sigma$ is among the most impactful parameters in FINUFFT
 
 The upsampling factor $\sigma$ controls the size of the internal uniform FFT grid, which has $\sigma N$ points per dimension relative to the $N$ requested output modes. Increasing $\sigma$ enlarges the FFT grid, raising FFT cost, but simultaneously relaxes the accuracy requirement on the spreading kernel, permitting a smaller kernel half-width $w$. Because $w$ decreases and the grid size increases as $\sigma$ grows, there exists a value of $\sigma$ that minimises total transform cost for a given problem size, dimension, and tolerance.
 
-\section{Sigma lower bound}
 %\label{sec:sigma_lower_bound}
 %
 %Equation~\eqref{eq:kernel_width} gives the kernel width $w$ required to reach tolerance $\varepsilon$ at a chosen $\sigma$, but it implicitly assumes exact arithmetic. In floating point, the fine grid used for the FFT has only finite resolution, and once the requested tolerance approaches machine precision the achievable accuracy is bounded not by the kernel but by rounding in the grid itself. This section derives $\sigma_{\text{low}}(\varepsilon, d, w, g)$, the smallest upsampling factor that can reach a given tolerance on a fine grid of length $g$ (the largest per-dimension fine-grid size, itself a function of $\sigma$), and defines when a candidate $\sigma$ should be rejected outright rather than merely disfavoured by the cost model.

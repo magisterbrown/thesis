@@ -12,13 +12,84 @@ Each parameter examined in this chapter is studied using the same four-step proc
 
 Beyond $\sigma$, which was treated in Chapter~\ref{ch:sigma_selection}, parameters analyzed in this chapter are: the maximum subproblem size, bin size.
 
+These two parameters are not independent. The bin size determines how spatially spread a
+contiguous run of bin-sorted points is, and $S_{\max}$ determines how many such points a
+subproblem holds; together they fix the subgrid that must be zeroed, spread into, and
+accumulated back. Tuning either one against a fixed value of the other therefore risks
+optimising along a single axis of a joint optimum. To establish how much is available
+from the pair, a Gaussian-process search  was run over $S_{\max}$ and the
+bin sizes \emph{jointly} -- a two- to four-dimensional space depending on
+dimensionality -- for $1\,$GiB type-1 transforms at unit density, in both precisions and
+both single-threaded and fully parallel, giving twelve configurations.
+
+Table~\ref{tab:joint_search_summary} reports the outcome. Each searched optimum and the
+corresponding FINUFFT default were then re-run on five independently generated point
+sets (the same five for both, so that the point set cancels in the ratio); the quoted
+figure is the mean speedup over those five pairings and its standard deviation.
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{|l|l|r|r|l|r|l|}
+        \hline
+        \textbf{Dim} & \textbf{Prec} & \textbf{Threads} & \textbf{Best $S_{\max}$}
+            & \textbf{Best bins} & \textbf{Default $S_{\max}$} & \textbf{Speedup} \\
+        \hline
+        1 & double & 1  & 3{,}231     & $(245)$        & 10{,}000  & $1.011 \pm 0.004$ \\
+        \hline
+        1 & double & 64 & 836         & $(72)$         & 10{,}000  & $1.013 \pm 0.053$ \\
+        \hline
+        1 & single & 1  & 1{,}075     & $(29)$         & 10{,}000  & $1.010 \pm 0.008$ \\
+        \hline
+        1 & single & 64 & 15{,}420    & $(336)$        & 10{,}000  & $1.013 \pm 0.016$ \\
+        \hline
+        2 & double & 1  & 312{,}474   & $(4,13)$       & 100{,}000 & $1.017 \pm 0.005$ \\
+        \hline
+        2 & double & 64 & 107{,}019   & $(4,2)$        & 100{,}000 & $1.033 \pm 0.051$ \\
+        \hline
+        2 & single & 1  & 509{,}791   & $(72,15)$      & 100{,}000 & $1.027 \pm 0.008$ \\
+        \hline
+        2 & single & 64 & 148{,}244   & $(18,2)$       & 100{,}000 & $0.995 \pm 0.023$ \\
+        \hline
+        3 & double & 1  & 1{,}719{,}564 & $(8,3,2)$    & 100{,}000 & $\mathbf{1.149 \pm 0.001}$ \\
+        \hline
+        3 & double & 64 & 1{,}603{,}666 & $(9,1,2)$    & 100{,}000 & $\mathbf{1.129 \pm 0.058}$ \\
+        \hline
+        3 & single & 1  & 1{,}213{,}511 & $(7,4,3)$    & 100{,}000 & $\mathbf{1.322 \pm 0.014}$ \\
+        \hline
+        3 & single & 64 & 1{,}996{,}464 & $(106,102,3)$ & 100{,}000 & $\mathbf{1.166 \pm 0.012}$ \\
+        \hline
+    \end{tabular}
+    \caption{Joint Gaussian-process search over $S_{\max}$ and bin sizes, for $1\,$GiB type-1 transforms at unit density. Speedup is against the FINUFFT default for that dimensionality ($S_{\max}=10^4$ in 1D, $10^5$ in 2D and 3D; bin sizes $16$, $4$, $4$), as the mean over five paired point sets $\pm$ one standard deviation.}
+    \label{tab:joint_search_summary}
+\end{table}
+
+The result is clear-cut: \textbf{only three-dimensional transforms admit a significant
+improvement from these two parameters.} All four 3D configurations gain between $13\%$
+and $32\%$, and the single-threaded double-precision case is reproducible to within
+$0.1\%$ across point sets. Every 1D and 2D configuration, by contrast, lies between
+$0.995$ and $1.033$ -- a margin that its own standard deviation either matches or
+exceeds, and one configuration is in fact marginally \emph{slower} than the default.
+The shipped defaults are therefore already at the optimum in one and two dimensions,
+and the remainder of this chapter concentrates on where the headroom actually is.
+
+Two features of the 3D optima explain where that headroom comes from. First, every one
+selects an $S_{\max}$ between $1.2$ and $2.0$ million, some $12$--$20\times$ the shipped
+$10^5$: in three dimensions the padded halo around each subgrid is paid on all three
+axes, so small subproblems are dominated by padding and the accumulate step suffers
+accordingly (Section~\ref{sec:cache_aware_subproblem}). Second, the standard deviations
+are an order of magnitude larger at $64$ threads than at one ($0.012$--$0.058$ against
+$0.001$--$0.014$), across every dimensionality -- the run-to-run spread is set by
+thread-scheduling and accumulation contention rather than by the parameters under test,
+which is why the small 1D and 2D margins cannot be resolved at high thread counts.
+
 \section{Maximum Subproblem Size}
 
 During the spreading phase, nonuniform points are partitioned into spatially localised subproblems so that each subproblem's contribution to the fine grid can be accumulated independently. The parameter $S_{\max}$ (exposed in the FINUFFT interface as \texttt{max\_subproblem\_size}) sets an upper bound on the number of nonuniform points assigned to any single subproblem.
 
 A larger $S_{\max}$ reduces the total number of subproblems, thereby lowering scheduling and synchronisation overhead. However, if subproblems are too large relative to the number of available threads, work is distributed unevenly and some threads may sit idle while others finish their chunk, reducing parallel efficiency.
 
-$S_{\max}$ determines the amount of memory dedicated to subproblem processing. During the gathering step, the algorithm loads $S_{\max}$ points with their coordinates into the memory buffer and creates the subgrid that each subproblem writes to. Ideally, this buffer and subgrid should fit within the fraction of the L2 or L3 cache available per thread. The subgrid's cache footprint, however, depends not only on $S_{\max}$ but also on the bin size used during the sorting step, so the two parameters are best tuned in conjunction.
+$S_{\max}$ determines the amount of memory dedicated to subproblem processing. During the gathering step, the algorithm loads $S_{\max}$ points with their coordinates into the memory buffer and creates the subgrid with results of each subproblem processing. 
 
 \subsection{Processing of subproblem}
 Processing a single subproblem during \texttt{execute} consists of three steps. \emph{Gathering} loads the coordinates and strengths of that subproblem's assigned points into a local buffer and allocates the local subgrid they will be spread onto. \emph{Spreading} then accumulates each point's contribution into that local subgrid, applying the spreading kernel over the $w^d$ neighbourhood of cells around each point. \emph{Adding} (\texttt{add\_wrapped\_subgrid}) finally writes the finished local subgrid back into the shared global fine grid, wrapping any cells that overflow the domain boundary and guarding against concurrent writes from other subproblems with either a lock or an atomic write, depending on the number of threads.
