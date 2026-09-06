@@ -1,87 +1,244 @@
 \chapter{Tuning Other Parameters}
 \label{ch:parameter_tuning}
 
-\section{Methodology}
+%\section{Methodology}
+%
+%Each parameter examined in this chapter is studied using the same four-step procedure. First, a single parameter is chosen as the subject under test, with all other parameters held at their existing defaults. Second, a Gaussian-process-based search (via Optuna) is run to find the empirically best value of that parameter for a set of common, representative transform configurations, spanning a range of problem sizes, thread counts, precisions, tolerances, and dimensionalities. Third, \texttt{perf} is used to explore how the transform's performance characteristics -- cache behaviour, DRAM traffic, branch misses, and per-function cycle share -- change between the legacy baseline and the empirically found optimum, in order to understand \emph{why} the optimum performs better rather than simply that it does. Fourth, these findings are used to develop an improved heuristic for choosing the parameter automatically, in place of the fixed default FINUFFT currently ships with.
 
-Each parameter examined in this chapter is studied using the same four-step procedure. First, a single parameter is chosen as the subject under test, with all other parameters held at their existing defaults. Second, a Gaussian-process-based search (via Optuna) is run to find the empirically best value of that parameter for a set of common, representative transform configurations, spanning a range of problem sizes, thread counts, precisions, tolerances, and dimensionalities. Third, \texttt{perf} is used to explore how the transform's performance characteristics -- cache behaviour, DRAM traffic, branch misses, and per-function cycle share -- change between the legacy baseline and the empirically found optimum, in order to understand \emph{why} the optimum performs better rather than simply that it does. Fourth, these findings are used to develop an improved heuristic for choosing the parameter automatically, in place of the fixed default FINUFFT currently ships with.
-
-\section{Overview}
-
+%\section{Overview}
 
 \section{Parameters Under Consideration}
 
 Beyond $\sigma$, which was treated in Chapter~\ref{ch:sigma_selection}, parameters analyzed in this chapter are: the maximum subproblem size, bin size.
 
-These two parameters are not independent. The bin size determines how spatially spread a
-contiguous run of bin-sorted points is, and $S_{\max}$ determines how many such points a
-subproblem holds; together they fix the subgrid that must be zeroed, spread into, and
-accumulated back. Tuning either one against a fixed value of the other therefore risks
-optimising along a single axis of a joint optimum. To establish how much is available
-from the pair, a Gaussian-process search  was run over $S_{\max}$ and the
-bin sizes \emph{jointly} -- a two- to four-dimensional space depending on
-dimensionality -- for $1\,$GiB type-1 transforms at unit density, in both precisions and
-both single-threaded and fully parallel, giving twelve configurations.
+These two parameters affect the initial stages of the algorithm before the FFT transform: setting the points and spreading them. The spreading process involves three steps: gathering, where the points are loaded into a thread-local buffer; spreading, where a vectorised kernel is applied to each point and the result is saved to the periodic subgrid; and adding, where the results from the subgrid are added to the global grid in a thread-safe manner.
 
-Table~\ref{tab:joint_search_summary} reports the outcome. Each searched optimum and the
-corresponding FINUFFT default were then re-run on five independently generated point
-sets (the same five for both, so that the point set cancels in the ratio); the quoted
-figure is the mean speedup over those five pairings and its standard deviation.
+\section{Subgrid size}
 
-\begin{table}[h]
+Subgrid size influences performance during the addition step. A subgrid is a cuboid that tightly wraps all the points assigned to its subproblem, padded by the kernel width. Subproblems themselves are picked from a partially bin-sorted array of points: rather than fully sorting all points by position, the points are only sorted into coarse bins, and each subproblem is then formed by taking a contiguous run of $S_{\max}$ points from this partially-sorted array. Because the points are randomly distributed, the subgrids of different subproblems sometimes overlap, so the sum of all subgrid areas exceeds the global area. Figure~\ref{fig:subgrid_overlap} shows how the first 20 such cuboids are written into the global grid, and how much they overlap one another along both axes.
+
+That overlap makes itself felt twice. The first cost is direct: each cell written carries a constant store cost, so the excess area is simply extra stores. The second is indirect, since every addition to the shared grid must be synchronized, for which FINUFFT provides two options: a critical section or an atomic compare-and-swap. With a critical section, the step's performance depends only on the number of threads and subproblems. With atomic stores it depends instead on how much the subgrids overlap. There is no hardware instruction for atomic addition of floats or doubles, so OpenMP's implementation of \texttt{\#pragma omp atomic} falls back to a compare-and-swap: the old value is first loaded from the grid, then a new value is stored via a CAS that checks whether the old value is still present; a subsequent branch checks whether the CAS succeeded, and on failure the operation is retried. This gives the accumulation step the lock-free property, per the definition in~\cite[Sec.~3.7, p.~60]{herlihyshavit2012}, and makes the overlapping area set the expected number of retries. The two options therefore call for different targets: minimizing the number of subgrids with a critical section, and minimizing the overlap between them with compare-and-swap.
+
+\subsection{Estimating average subgrid size}
+
+Average subgrid size, given uniform distribution of points can be estimated before transform based on maximum subproblem size, bin size and density. 1d subgrid size formula is the simplest to derive. Write $\tilde{N}$ for the number of cells of the fine grid, $\rho = M/\tilde{N}$ for the average number of points per cell, $b$ for the bin size in cells, and $w$ for the kernel width. Bin sorting places on average $\rho b$ points in each bin and orders the array by bin, but leaves the points within a bin in arbitrary order, so a subproblem built from a contiguous run of $S_{\max}$ points may draw them from anywhere inside the bins that run touches. Its bounding interval is therefore the union of those bins rather than the span of the points themselves. The run consumes $S_{\max} / (\rho b)$ bins worth of points and starts at an arbitrary offset inside the first of them, so it touches
+\begin{equation}
+    n_b = \frac{S_{\max}}{\rho b} + 1
+    \label{eq:subgrid_bins}
+\end{equation}
+bins on average, covering $n_b b$ cells. FINUFFT then pads that interval by half a kernel width on each side, so that spreading needs no bounds checking, which adds a further $w$ cells. The average subgrid size in one dimension is thus
+\begin{equation}
+    L_1 = n_b b + w = \frac{S_{\max}}{\rho} + b + w.
+    \label{eq:subgrid_1d}
+\end{equation}
+The three terms separate the three contributions: $S_{\max}/\rho$ is the extent the points genuinely occupy, $b$ is the slack introduced by sorting only into bins rather than fully, and $w$ is the kernel padding. 
+
+In two dimensions the bins are visited $x$ fastest, so a contiguous run of points fills entire rows of bins along $x$ before advancing in $y$. A bin-row is $b_y$ cells tall, so a strip of it one cell wide holds $\rho b_y$ points and a subproblem reaches
+\begin{equation}
+    x_{\mathrm{ext}} = \frac{S_{\max}}{\rho\, b_y}, \qquad
+    r = \frac{x_{\mathrm{ext}}}{N_x}, \qquad
+    f = \min(1, r)
+    \label{eq:subgrid_xext}
+\end{equation}
+cells along $x$ while it stays inside one row, where $r$ expresses that reach as a fraction of a bin-row and $f$ is the probability that the run does not fit inside a single row. Which of two shapes the subgrid takes depends on where the run happens to start. If it lies entirely within one row like on Figure~\ref{fig:subgrid_cuboid_regular} it is a compact box, $x_{\mathrm{ext}} + b_x$ cells wide and $b_y$ tall. If instead it straddles a row boundary linke on Figure~\ref{fig:subgrid_cuboid_wrapping} it consists of a suffix of one row and a prefix of the next; those two pieces sit at opposite ends of the $x$ axis, so their common bounding box spans the full width of the grid and two rows in height, however few points the run holds. Figure~\ref{fig:subgrid_overlap} shows locations and dimensions of first 20 subgrids from a real transform: the compact subgrids tile each bin-row along $x$, while the straddling ones reach from edge to edge and are two rows tall. Averaging the two cases over the starting offset, and padding every extent by the kernel width, gives the mean subgrid area
+\begin{equation}
+    A_2 = (1 - f)\,(x_{\mathrm{ext}} + b_x + w)(b_y + w)
+        \;+\; f\,(N_x + w)\bigl((\max(1, r) + 1)\, b_y + w\bigr).
+    \label{eq:subgrid_2d}
+\end{equation}
+The two clamps play opposite roles and cannot be merged. In the first, $f = \min(1, r)$ is a probability, and it saturates at one because a run longer than a row always spans the full width. In the second, $\max(1, r)$ is a row count, and it is floored at one because a straddling run covers two rows however short it is; for $r \geq 1$ the first term vanishes and the expression reduces to $(N_1 + w)\bigl((r+1) b_y + w\bigr)$, the run starting at an arbitrary offset and therefore touching $r + 1$ rows on average.
+
+In three dimensions the same construction applies once more, because the bins are visited $y$ next and $z$ slowest. A run now fills entire rows of bins along $x$ before advancing in $y$, and entire slabs of bins, meaning all bins sharing one $z$ index, before advancing in $z$. The reach along $x$ inside a single row becomes $x_{\mathrm{ext}} = S_{\max} / (\rho\, b_y b_z)$, and alongside $r$ and $f$ a second pair is needed for the slabs,
+\begin{equation}
+    q = \frac{S_{\max}}{\rho\, N_x N_y b_z} = r\,\frac{b_y}{N_y}, \qquad
+    g = \min(1, q),
+    \label{eq:subgrid_slab}
+\end{equation}
+where $q$ is the fraction of a slab a subproblem consumes and $g$ the probability that it crosses a slab boundary. Every subproblem then falls into exactly one of three cases, and since $q \leq r$ always, the probabilities partition cleanly: with probability $1 - f$ the run stays inside one row and its subgrid is compact; with probability $f - g$ it crosses a row boundary but not a slab boundary, so it spans the full width in $x$ while remaining a few rows tall; and with probability $g$ it crosses a slab boundary, whereupon the suffix and prefix it holds lie at opposite corners of an $x$--$y$ plane and the subgrid spans that plane entirely. Averaging over the three gives
+\begin{equation}
+    \begin{split}
+    A_3 = {}& (1 - f)\,(x_{\mathrm{ext}} + b_x + w)(b_y + w)(b_z + w) \\
+          &+ (f - g)\,(N_x + w)\bigl((\max(1, r) + 1)\, b_y + w\bigr)(b_z + w) \\
+          &+ g\,(N_x + w)(N_y + w)\bigl((\max(1, q) + 1)\, b_z + w\bigr),
+    \end{split}
+    \label{eq:subgrid_3d}
+\end{equation}
+which reduces to \eqref{eq:subgrid_2d} in two dimensions, where there are no slabs to cross and $g = 0$.
+
+The slab-crossing subgrids are rare but decisive, and their number is fixed by the geometry rather than by the tuning parameter: there are $N_z / b_z$ slabs, so however small $S_{\max}$ is made, that many subproblems still span a full $x$--$y$ plane each. In the measurements below this is $53$ subgrids at every $S_{\max}$, out of populations ranging from $40$ to $20{,}000$. Equation~\eqref{eq:subgrid_3d} reproduces the logged three-dimensional subgrid sizes to within $0.3\%$ across a five-hundredfold range of $S_{\max}$, covering all three regimes.
+
+Figure~\ref{tab:subgrid_pred} compares the three predictions against subgrid sizes logged directly from the spreader, at unit density and with $b_x = 16$, $b_y = b_z = 4$ and $w = 7$. Each row averages every subgrid built during one transform, from $40$ subgrids at the largest subproblem size up to $20{,}000$ at the smallest. All three agree to within $1\%$, and the residual is largest at small $S_{\max}$, where the discrete number of bins a run touches is least well described by its average.
+
+\begin{figure}[h]
     \centering
-    \small
-    \begin{tabular}{|l|l|r|r|l|r|l|}
-        \hline
-        \textbf{Dim} & \textbf{Prec} & \textbf{Threads} & \textbf{Best $S_{\max}$}
-            & \textbf{Best bins} & \textbf{Default $S_{\max}$} & \textbf{Speedup} \\
-        \hline
-        1 & double & 1  & 3{,}231     & $(245)$        & 10{,}000  & $1.011 \pm 0.004$ \\
-        \hline
-        1 & double & 64 & 836         & $(72)$         & 10{,}000  & $1.013 \pm 0.053$ \\
-        \hline
-        1 & single & 1  & 1{,}075     & $(29)$         & 10{,}000  & $1.010 \pm 0.008$ \\
-        \hline
-        1 & single & 64 & 15{,}420    & $(336)$        & 10{,}000  & $1.013 \pm 0.016$ \\
-        \hline
-        2 & double & 1  & 312{,}474   & $(4,13)$       & 100{,}000 & $1.017 \pm 0.005$ \\
-        \hline
-        2 & double & 64 & 107{,}019   & $(4,2)$        & 100{,}000 & $1.033 \pm 0.051$ \\
-        \hline
-        2 & single & 1  & 509{,}791   & $(72,15)$      & 100{,}000 & $1.027 \pm 0.008$ \\
-        \hline
-        2 & single & 64 & 148{,}244   & $(18,2)$       & 100{,}000 & $0.995 \pm 0.023$ \\
-        \hline
-        3 & double & 1  & 1{,}719{,}564 & $(8,3,2)$    & 100{,}000 & $\mathbf{1.149 \pm 0.001}$ \\
-        \hline
-        3 & double & 64 & 1{,}603{,}666 & $(9,1,2)$    & 100{,}000 & $\mathbf{1.129 \pm 0.058}$ \\
-        \hline
-        3 & single & 1  & 1{,}213{,}511 & $(7,4,3)$    & 100{,}000 & $\mathbf{1.322 \pm 0.014}$ \\
-        \hline
-        3 & single & 64 & 1{,}996{,}464 & $(106,102,3)$ & 100{,}000 & $\mathbf{1.166 \pm 0.012}$ \\
-        \hline
-    \end{tabular}
-    \caption{Joint Gaussian-process search over $S_{\max}$ and bin sizes, for $1\,$GiB type-1 transforms at unit density. Speedup is against the FINUFFT default for that dimensionality ($S_{\max}=10^4$ in 1D, $10^5$ in 2D and 3D; bin sizes $16$, $4$, $4$), as the mean over five paired point sets $\pm$ one standard deviation.}
-    \label{tab:joint_search_summary}
-\end{table}
+    \scriptsize
+    \setlength{\tabcolsep}{2.5pt}
+    \begin{subfigure}[t]{0.32\textwidth}
+        \centering
+        \begin{tabular}{rrrr}
+            \hline
+            $S_{\max}$ & Pred. & Meas. & Err. \\
+            \hline
+            0.5k   & 523    & 518    & $+0.91\%$ \\
+            1k     & 1023   & 1018   & $+0.47\%$ \\
+            2.5k   & 2523   & 2518   & $+0.19\%$ \\
+            5k     & 5023   & 5018   & $+0.10\%$ \\
+            10k    & 10023  & 10018  & $+0.05\%$ \\
+            25k    & 25023  & 25018  & $+0.02\%$ \\
+            50k    & 50023  & 50018  & $+0.01\%$ \\
+            100k   & 100023 & 100018 & $+0.00\%$ \\
+            \hline
+        \end{tabular}
+        \caption{1D, $N = 10^7$.}
+        \label{tab:subgrid_1d}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.32\textwidth}
+        \centering
+        \begin{tabular}{rrrr}
+            \hline
+            $S_{\max}$ & Pred. & Meas. & Err. \\
+            \hline
+            0.5k   & 3442   & 3427   & $+0.46\%$ \\
+            1k     & 6523   & 6509   & $+0.21\%$ \\
+            2.5k   & 15112  & 15100  & $+0.08\%$ \\
+            5k     & 27255  & 27248  & $+0.03\%$ \\
+            10k    & 43390  & 43374  & $+0.04\%$ \\
+            25k    & 59910  & 59897  & $+0.02\%$ \\
+            50k    & 84961  & 84924  & $+0.04\%$ \\
+            100k   & 135063 & 134979 & $+0.06\%$ \\
+            \hline
+        \end{tabular}
+        \caption{2D, $N_x = N_y = 3162$.}
+        \label{tab:subgrid_2d}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.32\textwidth}
+        \centering
+        \begin{tabular}{rrrr}
+            \hline
+            $S_{\max}$ & Pred. & Meas. & Err. \\
+            \hline
+            0.5k   & 12776  & 12782  & $-0.05\%$ \\
+            1k     & 21683  & 21712  & $-0.14\%$ \\
+            2.5k   & 41890  & 41870  & $+0.05\%$ \\
+            5k     & 59739  & 59639  & $+0.17\%$ \\
+            10k    & 91857  & 91672  & $+0.20\%$ \\
+            25k    & 183661 & 183159 & $+0.27\%$ \\
+            50k    & 321500 & 320590 & $+0.28\%$ \\
+            100k   & 540295 & 539013 & $+0.24\%$ \\
+            250k   & 807026 & 805710 & $+0.16\%$ \\
+            \hline
+        \end{tabular}
+        \caption{3D, $N_x = N_y = N_z = 215$.}
+        \label{tab:subgrid_3d}
+    \end{subfigure}
+    \caption{Predicted against measured subgrid size, from \eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and \eqref{eq:subgrid_3d}, at unit density with $M = 10^7$.}
+    \label{tab:subgrid_pred}
+\end{figure}
 
-The result is clear-cut: \textbf{only three-dimensional transforms admit a significant
-improvement from these two parameters.} All four 3D configurations gain between $13\%$
-and $32\%$, and the single-threaded double-precision case is reproducible to within
-$0.1\%$ across point sets. Every 1D and 2D configuration, by contrast, lies between
-$0.995$ and $1.033$ -- a margin that its own standard deviation either matches or
-exceeds, and one configuration is in fact marginally \emph{slower} than the default.
-The shipped defaults are therefore already at the optimum in one and two dimensions,
-and the remainder of this chapter concentrates on where the headroom actually is.
+%How much overlap there is to minimize depends on the dimension. In one dimension a subgrid is an interval, so two subgrids can only overlap in the padding they share at a common endpoint. In two and three dimensions the subgrids are rectangles and cuboids that overlap along entire faces, and the domain boundary adds a further source of overlap on top of that. Figure~\ref{fig:subgrid_cuboid_regular} shows the regular case: since the run of points making up the subproblem is spatially localised, its bounding cuboid is a single compact rectangle. Because the fine grid is periodic, however, a subproblem whose points straddle the domain boundary produces a cuboid that must wrap around to the opposite edge, as in Figure~\ref{fig:subgrid_cuboid_wrapping}. It is then effectively split across both edges of the domain and spans almost the full extent of that axis, so it overlaps far more of the other subgrids than its point count alone would suggest.
 
-Two features of the 3D optima explain where that headroom comes from. First, every one
-selects an $S_{\max}$ between $1.2$ and $2.0$ million, some $12$--$20\times$ the shipped
-$10^5$: in three dimensions the extra points padding each subgrid are paid on all three
-axes, so small subproblems are dominated by padding and the accumulate step suffers
-accordingly (Section~\ref{sec:cache_aware_subproblem}). Second, the standard deviations
-are an order of magnitude larger at $64$ threads than at one ($0.012$--$0.058$ against
-$0.001$--$0.014$), across every dimensionality -- the run-to-run spread is set by
-thread-scheduling and accumulation contention rather than by the parameters under test,
-which is why the small 1D and 2D margins cannot be resolved at high thread counts.
+%These two parameters are not independent. The bin size determines how spatially spread a
+%contiguous run of bin-sorted points is, and $S_{\max}$ determines how many such points a
+%subproblem holds; together they fix the subgrid that must be zeroed, spread into, and
+%accumulated back. Tuning either one against a fixed value of the other therefore risks
+%optimising along a single axis of a joint optimum. 
+
+%To establish how much is available
+%from the pair, a Gaussian-process search  was run over $S_{\max}$ and the
+%bin sizes \emph{jointly} -- a two- to four-dimensional space depending on
+%dimensionality -- for $1\,$GiB type-1 transforms at unit density, in both precisions and
+%both single-threaded and fully parallel, giving twelve configurations.
+%
+%Table~\ref{tab:joint_search_summary} reports the outcome. Each searched optimum and the
+%corresponding FINUFFT default were then re-run on five independently generated point
+%sets (the same five for both, so that the point set cancels in the ratio); the quoted
+%figure is the mean speedup over those five pairings and its standard deviation.
+%
+%\begin{table}[h]
+%    \centering
+%    \small
+%    \begin{tabular}{|l|l|r|r|l|r|l|}
+%        \hline
+%        \textbf{Dim} & \textbf{Prec} & \textbf{Threads} & \textbf{Best $S_{\max}$}
+%            & \textbf{Best bins} & \textbf{Default $S_{\max}$} & \textbf{Speedup} \\
+%        \hline
+%        1 & double & 1  & 3{,}231     & $(245)$        & 10{,}000  & $1.011 \pm 0.004$ \\
+%        \hline
+%        1 & double & 64 & 836         & $(72)$         & 10{,}000  & $1.013 \pm 0.053$ \\
+%        \hline
+%        1 & single & 1  & 1{,}075     & $(29)$         & 10{,}000  & $1.010 \pm 0.008$ \\
+%        \hline
+%        1 & single & 64 & 15{,}420    & $(336)$        & 10{,}000  & $1.013 \pm 0.016$ \\
+%        \hline
+%        2 & double & 1  & 312{,}474   & $(4,13)$       & 100{,}000 & $1.017 \pm 0.005$ \\
+%        \hline
+%        2 & double & 64 & 107{,}019   & $(4,2)$        & 100{,}000 & $1.033 \pm 0.051$ \\
+%        \hline
+%        2 & single & 1  & 509{,}791   & $(72,15)$      & 100{,}000 & $1.027 \pm 0.008$ \\
+%        \hline
+%        2 & single & 64 & 148{,}244   & $(18,2)$       & 100{,}000 & $0.995 \pm 0.023$ \\
+%        \hline
+%        3 & double & 1  & 1{,}719{,}564 & $(8,3,2)$    & 100{,}000 & $\mathbf{1.149 \pm 0.001}$ \\
+%        \hline
+%        3 & double & 64 & 1{,}603{,}666 & $(9,1,2)$    & 100{,}000 & $\mathbf{1.129 \pm 0.058}$ \\
+%        \hline
+%        3 & single & 1  & 1{,}213{,}511 & $(7,4,3)$    & 100{,}000 & $\mathbf{1.322 \pm 0.014}$ \\
+%        \hline
+%        3 & single & 64 & 1{,}996{,}464 & $(106,102,3)$ & 100{,}000 & $\mathbf{1.166 \pm 0.012}$ \\
+%        \hline
+%    \end{tabular}
+%    \caption{Joint Gaussian-process search over $S_{\max}$ and bin sizes, for $1\,$GiB type-1 transforms at unit density. Speedup is against the FINUFFT default for that dimensionality ($S_{\max}=10^4$ in 1D, $10^5$ in 2D and 3D; bin sizes $16$, $4$, $4$), as the mean over five paired point sets $\pm$ one standard deviation.}
+%    \label{tab:joint_search_summary}
+%\end{table}
+
+%The result is clear-cut: \textbf{only three-dimensional transforms admit a significant
+%improvement from these two parameters.} All four 3D configurations gain between $13\%$
+%and $32\%$, and the single-threaded double-precision case is reproducible to within
+%$0.1\%$ across point sets. Every 1D and 2D configuration, by contrast, lies between
+%$0.995$ and $1.033$ -- a margin that its own standard deviation either matches or
+%exceeds, and one configuration is in fact marginally \emph{slower} than the default.
+%The shipped defaults are therefore already at the optimum in one and two dimensions,
+%and the remainder of this chapter concentrates on where the headroom actually is.
+%
+%Two features of the 3D optima explain where that headroom comes from. First, every one
+%selects an $S_{\max}$ between $1.2$ and $2.0$ million, some $12$--$20\times$ the shipped
+%$10^5$: in three dimensions the extra points padding each subgrid are paid on all three
+%axes, so small subproblems are dominated by padding and the accumulate step suffers
+%accordingly (Section~\ref{sec:cache_aware_subproblem}). Second, the standard deviations
+%are an order of magnitude larger at $64$ threads than at one ($0.012$--$0.058$ against
+%$0.001$--$0.014$), across every dimensionality -- the run-to-run spread is set by
+%thread-scheduling and accumulation contention rather than by the parameters under test,
+%which is why the small 1D and 2D margins cannot be resolved at high thread counts.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\textwidth]{figures/subgrid_layout/subgrid_layout.pdf}
+    \caption{Bounding boxes of the first 20 subgrids at $S_{\max}=2500$, coloured by whether the subproblem crosses a bin-row boundary.}
+    \label{fig:subgrid_overlap}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/bin_size/subgrid_cuboid_regular.png}
+        \caption{Compact subgrid}
+        \label{fig:subgrid_cuboid_regular}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/bin_size/subgrid_cuboid_wrapping.png}
+        \caption{Wrapping subgrid}
+        \label{fig:subgrid_cuboid_wrapping}
+    \end{subfigure}
+    \caption{Points of one subproblem (red) among all nonuniform points, coloured by position in the sorted array.}
+    \label{fig:subgrid_cuboid_examples}
+\end{figure}
+
+Both the maximum subproblem size and the bin size therefore act on the same quantity, but not in the same way. $S_{\max}$ enters only through $x_{\mathrm{ext}}$, and does so linearly: halving it halves the reach of a subproblem along the fast axis. Of the bin dimensions only $b_x$ is linear, contributing the additive slack that comes from sorting into bins rather than sorting fully. The dimensions beyond $x$ are not. Because $b_y$ sits in the denominator of $x_{\mathrm{ext}}$, it also enters $r$ and the crossing probability $f$: enlarging it shortens the reach along $x$ and makes a boundary crossing less likely, while at the same time making every row taller and every crossing that does occur more expensive. In three dimensions $b_z$ repeats the pattern one level up, through $q$.
 
 \section{Maximum Subproblem Size}
 
@@ -99,16 +256,16 @@ The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $N/n_{\text{t
 
 This motivates the introduction of a new heuristic that sets an optimal number of subproblems per thread and limits $S_{\max}$ relative to the available cache size.
 
-\subsection{Distributions}
-\label{sec:distributions}
-To assess the impact of $S_{\max}$, we evaluate it under two point distributions: uniform, where points are drawn independently from a uniform distribution over the domain, and exponential, where points are clustered around the 0 with density falling off exponentially. Under a uniform distribution the nonuniform points spread evenly across bins, so each subproblem's contributing subgrid remains compact and roughly constant in size. 
-Under an exponential distribution, the majority of points concentrate near the origin, so most bins are densely populated and the subgrid each subproblem must write to is small and spatially compact. However, the tails of the distribution place a small number of points far from the centre; these scattered points fall into bins that are spread across the domain, producing a handful of subproblems whose contributing subgrid spans a disproportionately large region. The resulting variance in subgrid size means that a value of $S_{\max}$ that is well-suited to the dense core may be inadequate for the outlying subproblems, and vice versa.
-
-This distinction matters because real-world applications often process clustered data. In interferometric radio astronomy, for example, \texttt{fftvis}~\cite{fftvis} uses FINUFFT to compute visibilities from antenna pairs. Short baselines between nearby antennas produce many closely spaced measurement points, while long baselines between distant antennas produce only a few points spread far apart. The resulting data therefore has dense clusters alongside sparse outliers, which is precisely the structure that an exponential distribution models.
-\subsection{Internal effects}
-
-$S_{\max}$ has an opposing effect on two internal steps: \emph{Gathering} and \emph{Adding} steps.
-optimum is the point at which the two effects balance.
+%\subsection{Distributions}
+%\label{sec:distributions}
+%To assess the impact of $S_{\max}$, we evaluate it under two point distributions: uniform, where points are drawn independently from a uniform distribution over the domain, and exponential, where points are clustered around the 0 with density falling off exponentially. Under a uniform distribution the nonuniform points spread evenly across bins, so each subproblem's contributing subgrid remains compact and roughly constant in size. 
+%Under an exponential distribution, the majority of points concentrate near the origin, so most bins are densely populated and the subgrid each subproblem must write to is small and spatially compact. However, the tails of the distribution place a small number of points far from the centre; these scattered points fall into bins that are spread across the domain, producing a handful of subproblems whose contributing subgrid spans a disproportionately large region. The resulting variance in subgrid size means that a value of $S_{\max}$ that is well-suited to the dense core may be inadequate for the outlying subproblems, and vice versa.
+%
+%This distinction matters because real-world applications often process clustered data. In interferometric radio astronomy, for example, \texttt{fftvis}~\cite{fftvis} uses FINUFFT to compute visibilities from antenna pairs. Short baselines between nearby antennas produce many closely spaced measurement points, while long baselines between distant antennas produce only a few points spread far apart. The resulting data therefore has dense clusters alongside sparse outliers, which is precisely the structure that an exponential distribution models.
+%\subsection{Internal effects}
+%
+%$S_{\max}$ has an opposing effect on two internal steps: \emph{Gathering} and \emph{Adding} steps.
+%optimum is the point at which the two effects balance.
 
 
 \paragraph{Effect on gathering.}
@@ -128,8 +285,7 @@ stores cost nothing beyond the cache hit. Once $B(S_{\max})$ exceeds that share,
 written line, with points, must first be fetched for ownership and later written back.
 CPU uses line-fill buffers that bring back cache line from lower hierarchy levels. When pool of buffers is exhausted
 gathering cycles begin to stall. The gathering row of
-Table~\ref{tab:maxsp_perf_breakdown}, and the gathering curve of
-Figure~\ref{fig:maxsp_gather_vs_add} over the whole sweep, show the resulting slowdown: once the staging buffer
+Table~\ref{tab:maxsp_perf_breakdown} shows the resulting slowdown: once the staging buffer
 outgrows the per-thread L2 share, gathering rises from $31.1$\,ms at the optimum to
 $59.6$\,ms at $S_{\max}=10^5$, roughly doubling even though it still touches each of the $M$
 points exactly once. Table~\ref{tab:fb_full} shows the mechanism directly: the
@@ -180,15 +336,11 @@ three values of $S_{\max}$, where adding becomes faster with increasing subprobl
     \label{tab:maxsp_perf_breakdown}
 \end{table}
 
-Figure~\ref{fig:maxsp_gather_vs_add} shows the same measurement swept across the whole
-range rather than sampled at three points. 
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=\textwidth]{figures/maxsp_gather_vs_add/gather_vs_add.pdf}
-    \caption{Cost of one spreading call against $S_{\max}$ for the transform of
-    Table~\ref{tab:maxsp_perf_breakdown}, swept over sixteen values. }
-    \label{fig:maxsp_gather_vs_add}
-\end{figure}
+Figure~\ref{fig:subgrid_layout} shows where those subgrids actually land. Each bin-row
+holds several subproblems that between them tile it along $x$, and one further subproblem
+per row boundary that spans the full width because its run of points straddles that
+boundary. Everywhere a spanning subgrid underlies a compact one, both write the same
+cells, which is the redundant traffic $S_{\max}$ controls. 
 
 \subsection{A cache-relative heuristic}
 \label{sec:maxsp_heuristic}
@@ -252,44 +404,6 @@ more expensive one.
     \label{fig:maxsp_gather_vs_add_lowdensity}
 \end{figure}
 
-\section{Overhead of addition to subgrid}
-
-A subgrid is a cuboid that tightly wraps all the points assigned to its subproblem, padded by the kernel width as described above. Subproblems themselves are picked from a partially bin-sorted array of points: rather than fully sorting all points by position, the points are only sorted into coarse bins, and each subproblem is then formed by taking a contiguous run of $S_{\max}$ points from this partially-sorted array. Figure~\ref{fig:subgrid_overlap} shows how the first 20 such cuboids are written into the global grid, and how much they overlap one another along both axes.
-
-Adding subgrid has two effects that influence its performance. First, writing subgrid cells into a global grid has a constant store cost. Total number of writes into subgrid is variable, because some subproblems have overlapping subgrids. 
-Besides, writes into global grid, which is shared between threads, have a second, more indirect cost. Each addition to a global shared grid must be synchronized between threads, FINUFFT provides two options for it: critical section ot atomic compare and swap implementation.
-With a critical section, this step's performance depends only on the number of threads and subproblems. With atomic stores, however, contention instead depends on the overlapping area between subgrids. There is no hardware instruction for atomic addition of floats or doubles, so OpenMP's implementation of \texttt{\#pragma omp atomic} falls back to a compare-and-swap instruction. It works as follows: the old value is first loaded from the grid, then a new value is stored via a CAS that checks whether the old value is still present; a subsequent branch checks whether the CAS succeeded, and on failure the operation is retried. This gives the accumulation step the lock-free property, per the definition in~\cite[Sec.~3.7, p.~60]{herlihyshavit2012}. The overlapping area between subgrids therefore directly determines the amount of contention, and with it the expected number of retries.
-The two synchronization options therefore call for different targets: with a critical section the adding step is accelerated by minimizing the total number of subgrids, whereas with atomic compare-and-swap it is accelerated by minimizing the amount of overlap between them. In both cases minimizing the total number of writes into the global grid accelerates the addition step.
-
-In one dimension a subgrid is an interval, so two subgrids can only overlap in the padding they share at a common endpoint. In two and three dimensions the subgrids are rectangles and cuboids that overlap along entire faces, and the domain boundary adds a further source of overlap on top of that. Figure~\ref{fig:subgrid_cuboid_regular} shows the regular subgrid: since the run of points making up the subproblem is spatially localised, its bounding cuboid is a single compact rectangle. Because the fine grid is periodic, however, a subproblem whose points straddle the domain boundary produces a cuboid that must wrap around to the opposite edge, as in Figure~\ref{fig:subgrid_cuboid_wrapping}. Rather than one compact rectangle, the cuboid is effectively split across both edges of the domain and spans almost the full extent of that axis, so it overlaps far more of the other subgrids than its point count alone would suggest.
-
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.6\textwidth]{figures/bin_size/first20_subgrids_123x42_100k_blue.png}
-    \caption{Bounding boxes of the first 20 subgrids written back to the shared global grid, at bin size $123\times42$, $n_{\text{side}}=10000$, $S_{\max}=10^5$ (fixed), illustrating how neighbouring subgrids overlap along both axes.}
-    \label{fig:subgrid_overlap}
-\end{figure}
-
-\begin{figure}[h]
-    \centering
-    \begin{subfigure}[b]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/bin_size/subgrid_cuboid_regular.png}
-        \caption{Regular (non-wrapping) subgrid}
-        \label{fig:subgrid_cuboid_regular}
-    \end{subfigure}
-    \hfill
-    \begin{subfigure}[b]{0.48\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{figures/bin_size/subgrid_cuboid_wrapping.png}
-        \caption{Subgrid wrapping around the domain boundary}
-        \label{fig:subgrid_cuboid_wrapping}
-    \end{subfigure}
-    \caption{Points belonging to one subproblem (red) within the full set of nonuniform points (coloured by position in the sorted array). (a) A regular subproblem, whose points are spatially compact and whose bounding cuboid is a single rectangle. (b) A subproblem whose points straddle the domain boundary, whose bounding cuboid wraps around and is effectively split across both edges of the domain.}
-    \label{fig:subgrid_cuboid_examples}
-\end{figure}
-
-Wrapping cuboids drive up the contention and make redudndant writes into global grid. The solution is to split every subgrid that wraps over the last dimension into two subgrids at the domain boundary, so that each half is once again a single compact, non-wrapping cuboid; this trades one wrapping cuboid with many overlaps for two ordinary cuboids that only overlap their own local neighbours.
 
 %\subsection{Cache aware subproblem}
 %\label{sec:cache_aware_subproblem}
@@ -404,7 +518,6 @@ Wrapping cuboids drive up the contention and make redudndant writes into global 
 %    \label{fig:maxsp_branchmiss_3d}
 %\end{figure}
 %\subsection{Final 3d results}
-
 
 
 %Table~\ref{tab:maxsp_3d_final_results} compares $S_{\max}=100{,}000$ against $S_{\max}=M/n_{\text{thr}}$ -- an uncapped, thread-proportional subproblem size -- across 3D double-precision configurations of varying size and density.
@@ -539,7 +652,6 @@ $n_{\text{sub}}A$ turns at $128\times32$ and the histogram reaches L1 at $256\ti
 
 \subsection{Experimental evaluation}
 
-
 %\subsection{Subproblem subgrid}
 %
 %The total memory demand of a subproblem has two parts: point data and subgrid. The memory used by point data is predictable, scaling as $S_{\max}$ times a fixed per-point constant. The subgrid, however, depends on several factors -- the point density $\rho$, the fine-grid dimensions $n_1, n_2, \ldots$, the bin sizes $\beta_1, \beta_2, \ldots$ used during sorting, and the kernel width $w$ -- so this subsection describes how to analytically estimate the expected average subgrid size as a function of these quantities.
@@ -588,7 +700,6 @@ $n_{\text{sub}}A$ turns at $128\times32$ and the histogram reaches L1 at $256\ti
 %
 %This distinction matters because real-world applications often process clustered data. In interferometric radio astronomy, for example, \texttt{fftvis}~\cite{fftvis} uses FINUFFT to compute visibilities from antenna pairs. Short baselines between nearby antennas produce many closely spaced measurement points, while long baselines between distant antennas produce only a few points spread far apart. The resulting data therefore has dense clusters alongside sparse outliers, which is precisely the structure that an exponential distribution models.
 %%\subsection{Experimental Evaluation}
-
 
 %\begin{table}[h]
 %    \centering
@@ -811,7 +922,6 @@ $n_{\text{sub}}A$ turns at $128\times32$ and the histogram reaches L1 at $256\ti
 %\end{table}
 
 \section{Combined Heuristic}
-
 
 \section{Summary}
 

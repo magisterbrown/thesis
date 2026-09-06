@@ -5,6 +5,23 @@
 
 All tests in this appendix were performed on an Intel Xeon E5-2698 v4 CPU (2.20\,GHz, 20 cores / 40 threads, single socket, 50\,MiB L3 cache).
 
+\section{Sigma Sweep: Full Results}
+\label{app:sigma_sweep_full}
+
+Figure~\ref{fig:sigma_sweep_all} gives the sweep behind
+Figure~\ref{fig:sigma_sweep_1e6} in full: every configuration against every
+tolerance available at its precision, sixteen upsampling factors each. Reading
+across a row shows how the agreement between model and measurement changes as
+the tolerance tightens, and down a column how it changes with grid and
+dimension.
+
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=\textwidth,height=0.92\textheight,keepaspectratio]{figures/sigma_sweep/sigma_sweep_all.pdf}
+    \caption{Measured spreading time and modelled spreading cost against $\sigma$ for every configuration and tolerance in the sweep.}
+    \label{fig:sigma_sweep_all}
+\end{figure}
+
 \section{Sigma Selection Validation: Full Results}
 \label{app:sigma_validation}
 
