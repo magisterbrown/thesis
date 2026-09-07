@@ -22,6 +22,31 @@ dimension.
     \label{fig:sigma_sweep_all}
 \end{figure}
 
+\section{Subproblem Size Sweep: Full Results}
+\label{app:smax_sweep_full}
+
+Figure~\ref{fig:smax_sweep_all} gives the whole subproblem-size sweep behind the
+figures of Section~\ref{sec:subgrid_size} and the discussion that follows it.
+Each panel is one combination of dimension, point density and thread count, and
+within it the maximum subproblem size is swept from $10^4$ up to $M/n_{\text{thr}}$,
+the value at which there is one subproblem per thread. The cycles spent
+gathering, spreading and adding are separated by symbol. Every configuration is a
+$1$\,GiB transform, so the point count depends on the dimension and the grid
+follows from the density.
+
+Reading down a column shows the effect of density at fixed geometry, and across a
+row the effect of dimension and thread count at fixed density. The axes are
+logarithmic and scaled per panel, since the cycle counts differ by two orders of
+magnitude between the single-threaded and all-thread cases; the shapes of the
+curves are comparable between panels, the heights are not.
+
+\begin{figure}[p]
+    \centering
+    \includegraphics[width=\textwidth,height=0.92\textheight,keepaspectratio]{figures/smax_sweep_all/smax_sweep.pdf}
+    \caption{Cycles spent gathering, spreading and adding against $S_{\max}$, for every combination of dimension, density and thread count.}
+    \label{fig:smax_sweep_all}
+\end{figure}
+
 \section{Sigma Selection Validation: Full Results}
 \label{app:sigma_validation}
 
