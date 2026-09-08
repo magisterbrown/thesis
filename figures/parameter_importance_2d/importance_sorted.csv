@@ -1,0 +1,6 @@
+param,importance
+upsampfac,0.626000
+spread_bin_size_x,0.183000
+spread_bin_size_y,0.112000
+spread_nthr_atomic,0.054000
+spread_max_sp_size,0.025000
