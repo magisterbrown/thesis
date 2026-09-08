@@ -3,19 +3,21 @@
 
 \section{Motivation}
 
-Nonuniform Fast Fourier Transforms (NUFFTs) are central to a wide range of scientific computing applications, including magnetic resonance imaging (MRI) reconstruction, radio astronomy, and molecular dynamics. FINUFFT is a state-of-the-art library for computing type 1, 2, and 3 NUFFTs in one, two, and three dimensions. Despite its strong baseline performance, FINUFFT exposes a number of configuration parameters whose optimal values depend heavily on the input size, dimension, and required accuracy.
+The nonuniform fast Fourier transform is a workhorse of computational science. It underlies image reconstruction in magnetic resonance imaging, gridding in radio interferometry, particle-mesh methods in molecular dynamics and cosmology, and cryo-electron microscopy, and in each of these it is often the dominant cost of the pipeline that contains it. FINUFFT is among the most widely used implementations, and a large body of work has gone into making its inner loops fast: a carefully chosen kernel, hand-vectorised evaluation, and a parallel spreading scheme that avoids contention between threads.
 
-Current practice typically relies on default parameter values or manual tuning by expert users, both of which leave significant performance on the table. Furthermore, several parameters that influence performance are not exposed to the user at all, instead being fixed to compile-time or runtime defaults determined without regard to the specific input. This thesis investigates the parameter space of FINUFFT systematically, covering both its tunable and its hardcoded parameters, to develop heuristics that minimize planning time while approaching optimal execution time.
+What has received far less attention is how the library should be \emph{configured}. FINUFFT's behaviour is governed by a set of parameters -- the upsampling factor that fixes the size of the intermediate grid, the maximum size of a spreading subproblem, the dimensions of the boxes the nonuniform points are sorted into, and several others -- and their values are chosen by heuristics fixed when the library is built or, at best, by simple rules evaluated at run time. Several are not exposed to the user at all. These heuristics are not arbitrary; they encode real experience. But they are necessarily coarse, because the right value for each of them depends on properties of the problem that the library only learns at run time, and on properties of the machine that it does not measure.
+
+Two observations motivate a closer look. The first is that these parameters do not act on the transform as a whole but on individual steps of it, and they act on different steps in opposite directions. Raising the upsampling factor narrows the kernel and makes spreading cheaper, while enlarging the grid that the FFT must transform. Increasing the maximum subproblem size reduces the redundant writes that many small subgrids cause, while worsening the balance of work across threads. Enlarging the sort bins makes the sort itself cheaper, while inflating the subgrids that the spreader must later write back. In each case the total cost is a sum of opposing terms, so a single fixed value cannot be right across the range of inputs the library is asked to handle: the balance point moves with the density of the points, with the requested tolerance, and with the cache hierarchy of the machine.
+
+The second observation is that the consequences of getting these choices wrong are not small. A configuration search over a single representative transform, reported in Chapter~\ref{ch:parameter_importance}, produces execution times spanning more than an order of magnitude, and a heuristic that selects a plausible-looking value can be substantially slower than a neighbouring one for reasons that have nothing to do with the quantity the heuristic scores. Understanding \emph{why} each parameter behaves as it does, rather than searching for good values case by case, is therefore worth the effort: it is what makes it possible to predict a good configuration instead of finding one by experiment.
 
 \section{Research Questions}
 
-This thesis addresses the following research questions:
+This thesis addresses the following questions.
 
 \begin{enumerate}
-    \item Which FINUFFT configuration parameters have the most significant impact on execution time, and under what input conditions?
-    \item How should the spreading parameter $\sigma$ be selected to balance accuracy and performance for a given input?
-    \item Can a lightweight heuristic be developed that selects near-optimal values for all tunable parameters without incurring significant planning overhead?
+    \item \textbf{Which configuration parameters affect performance, and how much?} FINUFFT exposes a dozen options and hides several more constants in its source. Chapter~\ref{ch:parameter_importance} establishes where the time is spent across the stages of a transform, and ranks the parameters by their contribution to the variance in execution time over a joint search of the configuration space.
+
+    \item \textbf{Through which mechanism does each parameter act, and where do the resulting trade-offs balance?} Rather than treating the transform as a single measurement, Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning} separate it into sorting, gathering, spreading, adding and the FFT, and attribute the effect of each parameter to the steps it speeds up and the steps it slows down. Because those effects oppose one another, each parameter has an interior optimum, and the question is what its position depends on: point density, dimension, requested tolerance, thread count, and the sizes of the levels of the cache hierarchy.
+
 \end{enumerate}
-
-
-

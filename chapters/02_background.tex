@@ -5,17 +5,38 @@
 
 The standard Discrete Fourier Transform (DFT) operates on uniformly sampled data. Many practical applications, however, involve data sampled at irregular (nonuniform) locations. The Nonuniform Fast Fourier Transform (NUFFT) generalizes the FFT to handle such data efficiently.
 
-Three types of NUFFT are commonly distinguished:
+Three types of NUFFT are commonly distinguished, according to which side of the transform is nonuniform. Write $M$ for the number of nonuniform points and $N$ for the number of uniform modes.
 \begin{itemize}
-    \item \textbf{Type 1 (nonuniform to uniform):} transforms from nonuniform source points to a uniform Fourier grid.
-    \item \textbf{Type 2 (uniform to nonuniform):} evaluates a Fourier series at nonuniform target points.
-    \item \textbf{Type 3 (nonuniform to nonuniform):} transforms between nonuniform source and target points.
+    \item \textbf{Type 1 (nonuniform to uniform):} given strengths $c_j$ at nonuniform locations $x_j$, evaluate the Fourier coefficients $f_k = \sum_{j=1}^{M} c_j e^{\pm i k \cdot x_j}$ on a uniform grid of modes $k$.
+    \item \textbf{Type 2 (uniform to nonuniform):} the adjoint operation. Given coefficients $f_k$ on a uniform grid of modes, evaluate the Fourier series $c_j = \sum_k f_k e^{\pm i k \cdot x_j}$ at nonuniform target locations $x_j$.
+    \item \textbf{Type 3 (nonuniform to nonuniform):} given strengths at nonuniform locations $x_j$, evaluate at nonuniform target frequencies $s_k$, with neither side lying on a grid.
 \end{itemize}
 
-\subsection{Key Configuration Parameters}
+The direct evaluation of any of these costs $O(MN)$. The NUFFT reduces this to $O(M + N \log N)$ by moving the problem onto a uniform grid where an FFT can be used. Because the nonuniform points do not lie on that grid, they are first convolved with a smooth, rapidly decaying kernel $\varphi$ of width $w$ grid cells, which spreads each point's contribution over the $w^d$ cells surrounding it. The grid used for this is finer than the output grid by an upsampling factor $\sigma > 1$, so that the aliasing introduced by the convolution falls outside the band of interest. The convolution is then undone in Fourier space by dividing each mode by the kernel's Fourier transform, a step referred to as deconvolution. The accuracy of the result is controlled by the requested tolerance $\varepsilon$, which together with $\sigma$ determines the kernel width $w$: a wider kernel decays faster in Fourier space and therefore leaves less aliasing to correct.
 
-% TODO: add exposed parameters and internal parameters.
+\subsection{Structure of a transform}
+\label{sec:transform_structure}
 
-\section{Related Work}
+FINUFFT exposes this algorithm through a three-call interface, and it is worth setting out what each call does, since the parameters studied in this thesis act on different ones. A transform is created with \texttt{makeplan}, given its nonuniform points with \texttt{setpts}, and evaluated with \texttt{execute}; the split exists so that several transforms sharing the same points can reuse one plan, and so that the substantial precomputation each stage performs is not repeated.
 
-% TODO: survey prior work on NUFFT parameter selection, autotuning, and benchmarking
+\texttt{makeplan} does no work on the data at all, but fixes every quantity the later stages depend on. From the requested tolerance and the upsampling factor it selects the kernel width $w$ and the kernel's shape parameter, then precomputes the piecewise-polynomial coefficients used to evaluate the kernel quickly at run time. It chooses the size of the fine grid, rounding it up to a length the FFT library handles efficiently, evaluates the Fourier series of the kernel on that grid for the later deconvolution, and creates the FFT plan itself.
+
+\texttt{setpts} accepts the nonuniform points. Its principal task is to sort them, which is discussed in detail below, but in recent versions it also revisits the choice of upsampling factor once the point density is known, and repeats the parts of the planning stage that depend on it if the choice changes.
+
+\texttt{execute} performs the transform in three phases. For a type 1 these are spreading the nonuniform strengths onto the fine grid, transforming that grid with the FFT, and deconvolving each mode while shuffling it into the requested output ordering. A type 2 runs the same three phases in reverse: the modes are amplified by the reciprocal kernel coefficients, an inverse FFT produces the fine grid, and the values at the nonuniform points are then interpolated from it. A type 3 is not a third algorithm but a composition of the first two, and is described separately below.
+
+\subsection{Type 3 as a composition of types 1 and 2}
+
+The difficulty with a type 3 transform is that neither side lies on a grid, so there is no FFT to place in the middle. FINUFFT resolves this by observing that a type 1 already produces a uniform grid of coefficients as an intermediate, and a type 2 already consumes one: chaining them evaluates nonuniform sources at nonuniform targets, with the uniform grid appearing only inside the composition and never being the answer to anything the user asked.
+
+Concretely, \texttt{execute} performs four steps. First the input strengths are multiplied by a precomputed phase, which realises the shift that recentres the source points and so keeps the fine grid as small as possible. Second, those shifted strengths are spread onto an internal fine grid with the same kernel and the same subproblem machinery a type 1 uses; this is the type-1 half, stopping short of its FFT. Third, an inner type-2 plan, created during \texttt{makeplan} and stored inside the outer plan, evaluates that grid at the nonuniform output frequencies; the FFT and the interpolation that a type 2 performs both happen here, so the middle FFT of a type 1 has effectively been replaced by an entire type-2 transform. Fourth, each output value is divided by the kernel's Fourier transform evaluated at its own target frequency, together with the phase that undoes the frequency shift.
+
+The two deconvolutions therefore differ in kind, which is the one place the composition is not simply a type 1 followed by a type 2. A type 1 divides by a kernel Fourier series precomputed once on a uniform mode grid, which is why \texttt{makeplan} can evaluate it in advance. A type 3 must divide by the Fourier transform of the kernel at target frequencies that are not on any grid, so the correction is computed for each target by direct quadrature of the kernel against the corresponding exponential.
+
+Two consequences follow for performance, and they explain why type 3 behaves differently from the other two in the stage breakdown of Chapter~\ref{ch:parameter_importance}. The size of the internal fine grid is set by the product of the widths of the intervals containing the sources and the targets, rather than by a mode count the user chose, which is why the shifts in the first and fourth steps matter: they shrink both widths and hence the grid. And a much larger share of the total work falls in \texttt{setpts}, since that is where the inner plan is built and where the per-target deconvolution factors are computed.
+
+\subsection{The spreading phase}
+
+The spreading phase is the one this thesis is most concerned with, and it is not a single loop. The sorted points are divided into subproblems, each processed by one thread into a private buffer called a subgrid, so that threads do not contend for the shared output grid. Processing a subproblem has three steps: \emph{gathering}, which copies the subproblem's coordinates and strengths out of the sorted arrays into contiguous scratch space; \emph{spreading}, which evaluates the kernel around each point and accumulates it into the subgrid; and \emph{adding}, which accumulates the finished subgrid back into the shared output grid, wrapping at the periodic boundary. Interpolation, the type-2 direction, has no adding step, since it reads from the grid rather than writing to it. Chapter~\ref{ch:parameter_tuning} shows that these three steps respond to the spreader's parameters in different, and often opposing, directions.
+
+
