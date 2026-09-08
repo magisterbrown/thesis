@@ -5,15 +5,6 @@
 
 All tests in this appendix were performed on an Intel Xeon E5-2698 v4 CPU (2.20\,GHz, 20 cores / 40 threads, single socket, 50\,MiB L3 cache).
 
-\section{Sigma Sweep: Full Results}
-\label{app:sigma_sweep_full}
-
-Figure~\ref{fig:sigma_sweep_all} gives the sweep behind
-Figure~\ref{fig:sigma_sweep_1e6} in full: every configuration against every
-tolerance available at its precision, sixteen upsampling factors each. Reading
-across a row shows how the agreement between model and measurement changes as
-the tolerance tightens, and down a column how it changes with grid and
-dimension.
 
 \begin{figure}[p]
     \centering
@@ -22,23 +13,6 @@ dimension.
     \label{fig:sigma_sweep_all}
 \end{figure}
 
-\section{Subproblem Size Sweep: Full Results}
-\label{app:smax_sweep_full}
-
-Figure~\ref{fig:smax_sweep_all} gives the whole subproblem-size sweep behind the
-figures of Section~\ref{sec:subgrid_size} and the discussion that follows it.
-Each panel is one combination of dimension, point density and thread count, and
-within it the maximum subproblem size is swept from $10^4$ up to $M/n_{\text{thr}}$,
-the value at which there is one subproblem per thread. The cycles spent
-gathering, spreading and adding are separated by symbol. Every configuration is a
-$1$\,GiB transform, so the point count depends on the dimension and the grid
-follows from the density.
-
-Reading down a column shows the effect of density at fixed geometry, and across a
-row the effect of dimension and thread count at fixed density. The axes are
-logarithmic and scaled per panel, since the cycle counts differ by two orders of
-magnitude between the single-threaded and all-thread cases; the shapes of the
-curves are comparable between panels, the heights are not.
 
 \begin{figure}[p]
     \centering
@@ -47,63 +21,3 @@ curves are comparable between panels, the heights are not.
     \label{fig:smax_sweep_all}
 \end{figure}
 
-\section{Sigma Selection Validation: Full Results}
-\label{app:sigma_validation}
-
-Table~\ref{tab:sigma_case_configs} defines the six base configurations, referred to below and in Section~\ref{sec:validation} as \emph{Case} 1--6, used for the validation sweep. Table~\ref{tab:sigma_full_results} lists every configuration/density/type combination from that sweep where the old and new $\sigma$-selection heuristics disagree. \emph{Throughput increase} is new-heuristic throughput divided by old-heuristic throughput, so values above 1 favour the new heuristic.
-\begin{table}[h]
-    \centering
-    \begin{tabular}{cccccc}
-        \hline
-        \textbf{Case} & \textbf{Dim} & \textbf{Precision} & \textbf{$N$} & \textbf{$\varepsilon$} & \textbf{Threading} \\
-        \hline
-        1 & 1D & double & $10^4\times1\times1$   & $10^{-8}$ & single \\
-        2 & 2D & single & $320\times320\times1$  & $10^{-4}$ & single \\
-        3 & 2D & double & $320\times320\times1$  & $10^{-8}$ & single \\
-        4 & 2D & single & $320\times320\times1$  & $10^{-4}$ & multi  \\
-        5 & 3D & double & $192\times192\times128$ & $10^{-6}$ & multi  \\
-        6 & 1D & single & $10^4\times1\times1$   & --        & single \\
-        \hline
-    \end{tabular}
-    \caption{Base configurations used for the second $\sigma$-selection validation sweep.}
-    \label{tab:sigma_case_configs}
-\end{table}
-
-\begin{longtable}{|r|r|r|r|r|r|}
-    \hline
-    \textbf{Case} & \textbf{Type} & \textbf{Density} & \textbf{Old $\sigma$} & \textbf{New $\sigma$} & \textbf{Throughput increase} \\
-    \hline
-    \endfirsthead
-    \hline
-    \textbf{Case} & \textbf{Type} & \textbf{Density} & \textbf{Old $\sigma$} & \textbf{New $\sigma$} & \textbf{Throughput increase} \\
-    \hline
-    \endhead
-    1 & 2 & 0.25   & 1.25 & 1.31 & 0.908 \\ \hline
-    1 & 2 & 0.5    & 1.25 & 1.31 & 0.926 \\ \hline
-    1 & 2 & 1.0    & 1.25 & 1.31 & 0.933 \\ \hline
-    2 & 2 & 4.0    & 1.25 & 1.36 & 0.940 \\ \hline
-    1 & 2 & 4.0    & 1.25 & 1.31 & 0.957 \\ \hline
-    3 & 2 & 2.0    & 1.25 & 1.57 & 0.978 \\ \hline
-    1 & 2 & 2.0    & 1.25 & 1.31 & 0.988 \\ \hline
-    1 & 1 & 4.0    & 1.25 & 1.31 & 1.033 \\ \hline
-    1 & 2 & 8.0    & 1.25 & 1.31 & 1.039 \\ \hline
-    1 & 2 & 16.0   & 1.25 & 1.31 & 1.046 \\ \hline
-    1 & 2 & 32.0   & 1.25 & 1.31 & 1.050 \\ \hline
-    2 & 2 & 8.0    & 1.25 & 1.67 & 1.054 \\ \hline
-    2 & 2 & 32.0   & 1.25 & 1.67 & 1.063 \\ \hline
-    5 & 1 & 8.0    & 1.25 & 1.26 & 1.087 \\ \hline
-    1 & 1 & 16.0   & 1.25 & 1.31 & 1.088 \\ \hline
-    1 & 1 & 8.0    & 1.25 & 1.31 & 1.090 \\ \hline
-    2 & 2 & 16.0   & 1.25 & 1.67 & 1.100 \\ \hline
-    1 & 1 & 32.0   & 1.25 & 1.31 & 1.103 \\ \hline
-    3 & 2 & 4.0    & 1.25 & 2.00 & 1.175 \\ \hline
-    1 & 2 & 0.125  & 1.25 & 1.31 & 1.218 \\ \hline
-    3 & 1 & 2.0    & 1.25 & 1.32 & 1.242 \\ \hline
-    3 & 2 & 16.0   & 1.25 & 2.00 & 1.293 \\ \hline
-    4 & 2 & 16.0   & 1.25 & 1.36 & 1.293 \\ \hline
-    3 & 2 & 8.0    & 1.25 & 2.00 & 1.298 \\ \hline
-    3 & 1 & 4.0    & 1.25 & 1.32 & 1.316 \\ \hline
-    4 & 2 & 32.0   & 1.25 & 1.36 & 2.155 \\ \hline
-    \caption{Throughput change in cases where old and new heuristics return different sigmas.}
-    \label{tab:sigma_full_results}
-\end{longtable}
