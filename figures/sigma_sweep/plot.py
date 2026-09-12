@@ -5,8 +5,8 @@ Data: sigma_sweep_1thread.csv, produced by perftest/sigma_sweep_bench.py on one
 exclusive Ice Lake node, SINGLE-THREADED, 8 iterations per point. Six
 configurations (1D 16000, 2D 400x400 and 3D 96x96x64, single and double, plus a
 repeat of the 2D single case) x that precision's tolerances x 16 upsampling
-factors from 1.25 to 2.00. The 3D tol 1e-12 case is absent: it was still running
-when the sweep was stopped, so that one panel is missing from the full figure.
+factors from 1.25 to 2.00. Tolerance 1e-12 is left out of the figures: only two of the six configurations
+reached it before the sweep was stopped, so its row would be mostly empty.
 
 Single-threaded on purpose. The two 2D single-precision configurations differ
 only by a label and so measure the same thing twice; across all 64 of their
@@ -47,6 +47,7 @@ PREC_NAME = {"f": "single", "d": "double"}
 TIME_COLOR, CPLX_COLOR = "#1f77b4", "#ff7f0e"
 
 MAIN_TOL = 1e-6      # the tolerance the main-text figure shows
+DROP_TOLS = {1e-12}  # excluded: only 2 of the 6 configurations reached it
 MAIN_PREC = "d"      # ... and at which precision
 
 
@@ -58,6 +59,8 @@ def load_rows(path=CSV) -> list:
             r["size"] = int(r["size"])
             r["density"] = float(r["density"])
             r["tol"] = float(r["tol"])
+            if r["tol"] in DROP_TOLS:
+                continue
             r["upsampfac"] = float(r["upsampfac"])
             r["complexity"] = float(r["complexity"])
             r["cpu_time_ns"] = float(r["cpu_time_ns"])

@@ -1,11 +1,11 @@
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 
-FINUFFT (Finitely Nonuniform Fast Fourier Transform) is a high-performance library for computing nonuniform fast Fourier transforms. Its performance is highly sensitive to the choice of configuration parameters, yet no systematic approach exists for selecting optimal parameters for a given input. This thesis presents a comprehensive study of FINUFFT's parameter space through benchmarking and analysis.
+FINUFFT is among the fastest libraries for the nonuniform fast Fourier transform. Its is heavily optimised, but its behaviour is also governed by a small set of configuration parameters that the library fixes from built-in heuristics, and whose effects have not been studied systematically.
 
-We first establish which parameters have the greatest impact on execution time and under what conditions. We then develop a principled method for selecting the spreading parameter $\sigma$, which governs a fundamental trade-off between accuracy and compute cost. Finally, we extend this analysis to the remaining tunable parameters and propose a lightweight heuristic that can predict near-optimal configurations with minimal planning overhead.
+This thesis measures what those parameters do. The library is instrumented so that the cost of each stage of a transform can be attributed separately, a global search establishes which parameters matter at all, and each of them is then examined on its own.
 
-The resulting approach reduces the time needed for parameter selection while achieving execution times close to those obtained by exhaustive search, making FINUFFT more accessible for practical high-performance applications.
+No parameter is found to be uniformly beneficial: each reduces the cost of one stage only by raising that of another, so that the optimum lies at an interior balance rather than at either extreme, and its location is contingent on both the problem instance and the host architecture. Trade-offs of geometric origin are captured in closed-form models, while the remainder are attributed to the memory hierarchy. The contribution is therefore an explanatory account of the observed parameter behaviour, together with the foundation on which an automatic selection could be constructed.
 
 \vspace{1cm}
-\noindent\textbf{Keywords:} FINUFFT, nonuniform FFT, parameter optimization, performance heuristics, benchmarking
+\noindent\textbf{Keywords:} FINUFFT, nonuniform FFT, parameter selection, performance analysis
