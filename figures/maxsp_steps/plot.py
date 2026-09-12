@@ -14,7 +14,8 @@ zeroing, and is an upper bound on gathering alone.
 
 Writes two figures next to this script:
 
-  maxsp_steps.pdf   wall-clock cost of each of the three steps against S_max
+  maxsp_steps.pdf   wall-clock cost of a subproblem (gathering + spreading +
+                    adding) against S_max
   maxsp_cycles.pdf  the same three steps in cycles rather than time. Cycles
                     count work actually done, summed over threads, so the two
                     figures separate real slowdown from wall time inflated by
@@ -48,6 +49,7 @@ Writes two figures next to this script:
                     increasingly set by load imbalance rather than by work.
 """
 import csv
+import math
 import pathlib
 
 import matplotlib
@@ -88,6 +90,7 @@ def smax_at(cache_bytes):
 
 # categorical slots 1-3, the set that stays separable for colour-blind readers
 GATHER, SPREAD, ADD = "#2a78d6", "#eb6834", "#1baf7a"
+TOTAL = "#3b3b3b"                      # the three steps summed
 TIME_C, FB_C = "#1f77b4", "#ff7f0e"   # matches the twin-axis figures elsewhere
 L2_C, L3_C = "#1baf7a", "#4a3aa7"     # the two stall counters
 CYC_C = "#e34948"                     # gathering cycles: work, not stalls
@@ -99,19 +102,22 @@ def main():
 
     fig, ax = plt.subplots(1, 1, figsize=(7.5, 4.4))
 
-    for key, sd, c, lab in (("gather_ms", "gather_sd", GATHER, "gathering"),
-                            ("spread_ms", "spread_sd", SPREAD, "spreading"),
-                            ("add_ms", "add_sd", ADD, "adding")):
-        y = [float(r[key]) for r in rows]
-        e = [float(r[sd]) for r in rows]
-        ax.fill_between(x, [a - b for a, b in zip(y, e)],
-                        [a + b for a, b in zip(y, e)], color=c, alpha=0.18, lw=0)
-        ax.plot(x, y, "-o", color=c, lw=1.8, ms=4, label=lab)
+    # One curve: the whole of a subproblem's cost, gathering plus spreading plus
+    # adding. total_ms is the measured phase time, equal to the sum of the three
+    # step times; the band combines their standard deviations in quadrature.
+    y = [float(r["total_ms"]) for r in rows]
+    e = [math.sqrt(sum(float(r[sd]) ** 2
+                       for sd in ("gather_sd", "spread_sd", "add_sd")))
+         for r in rows]
+    ax.fill_between(x, [a - b for a, b in zip(y, e)],
+                    [a + b for a, b in zip(y, e)], color=TOTAL, alpha=0.18, lw=0)
+    ax.plot(x, y, "-o", color=TOTAL, lw=1.8, ms=4,
+            label="gathering + spreading + adding")
     ax.set_xscale("log")
     ax.set_xlabel(r"$S_{\max}$")
     ax.set_ylabel("time per spreading call [ms]")
     ax.set_ylim(bottom=0)
-    ax.set_title("Cost of each step", loc="left", fontsize=11)
+    ax.set_title("Total cost of a subproblem", loc="left", fontsize=11)
     ax.legend(fontsize=9, loc="upper left", framealpha=0.95)
     ax.grid(True, ls=":", lw=0.6, alpha=0.7)
     ax.set_axisbelow(True)

@@ -6,7 +6,7 @@ script that produced the exploratory version of this figure; this is the
 thesis-figure copy, with paths resolved next to the CSV and no CLI.
 
 Data: complex-to-complex out-of-place DUCC FFTs in one, two and three
-dimensions, single and double precision, on 1 and 16 threads. The sweep sizes
+dimensions, single and double precision, on one thread and on all threads of the machine. The sweep sizes
 each dimension so the TOTAL element count (N^dim) follows a common ladder,
 capped by a 1 GiB budget, so the dimensions are compared at matched problem
 sizes rather than matched per-axis N. Each point is a Google Benchmark mean
@@ -15,15 +15,15 @@ over eight repetitions.
 Throughput is N^dim points per unit cpu time, so higher is better and the
 curves stay comparable across sizes. Each panel carries a dashed C/log2(N)
 reference on the SAME axis: an FFT costs O(N log N), so at a fixed cost per
-butterfly the point rate should fall off as 1/log2(N). C is fitted (median of
-throughput * log2(N) over the panel's busiest thread count), so the reference
-is a shape to compare against rather than an absolute prediction -- where the
-measured curve drops away from it, something other than butterfly count is
-paying: cache, bandwidth, or radix.
+butterfly the point rate should fall off as 1/log2(N). C is taken as the largest
+value of throughput * log2(N) on the panel's single-threaded curve, so the
+reference is an upper bound: no single-threaded point lies above it, and where the
+measured curve falls away from it, something other than butterfly count is paying
+-- cache, bandwidth, or radix.
 
-Vertical lines mark where the working set (N^dim complex elements) crosses the
-L2 and L3 sizes recorded in the CSV's own columns, which is usually where the
-throughput curve visibly bends.
+A vertical line marks where the working set (N^dim complex elements) crosses the
+L3 size recorded in the CSV's own column, which is usually where the throughput
+curve visibly bends.
 
 Writes ducc_fft_scaling.{pdf,png} next to this script.
 """
@@ -95,22 +95,22 @@ def main():
                 xs = [r["N"] for r in pts]
                 # Throughput in Mpoint/s: N^dim points over the cpu time.
                 ys = [(r["N"] ** dim) * 1e3 / r["cpu_time_ns"] for r in pts]
-                ax.plot(xs, ys, marker="o", label=f"{nthreads} thr",
+                ax.plot(xs, ys, marker="o", label=("all thr" if nthreads == max(nthreads_vals) else f"{nthreads} thr"),
                         color=color_of[nthreads])
 
             ns = sorted({r["N"] for r in subset})
 
-            # Ideal O(N log N) shape on the throughput axis, fitted to the
-            # busiest thread count so it sits on that curve's own level.
+            # Ideal O(N log N) shape on the throughput axis, scaled so that it
+            # bounds the single-threaded curve from above rather than fitting it.
             if ns:
-                ref_threads = max(by_threads) if by_threads else None
+                ref_threads = min(by_threads) if by_threads else None
                 ref_pts = by_threads.get(ref_threads, [])
                 scales = sorted((r["N"] ** dim) * 1e3 / r["cpu_time_ns"] * math.log2(r["N"])
                                 for r in ref_pts if r["N"] > 1)
                 if scales:
-                    c = scales[len(scales) // 2]  # median: robust to the cache cliffs
+                    c = scales[-1]  # the largest, so the curve bounds the points from above
                     ax.plot(ns, [c / math.log2(n) for n in ns],
-                            label=f"C / log$_2$ N ({ref_threads} thr fit)",
+                            label=f"C / log$_2$ N ({ref_threads} thr upper bound)",
                             **IDEAL_STYLE)
 
             ax.set_xscale("log")
@@ -119,11 +119,10 @@ def main():
             # the fall past L3) this plot is about.
             ax.set_ylim(bottom=0)
 
-            # Cache boundaries, drawn after the ylim is fixed so the labels land
+            # Cache boundary, drawn after the ylim is fixed so the label lands
             # at the top of the panel rather than wherever autoscaling left it.
-            l2 = cache_boundary_n(subset[0]["l2_cache_bytes"], dim, prec) if subset else None
             l3 = cache_boundary_n(subset[0]["l3_cache_bytes"], dim, prec) if subset else None
-            for val, label, style in ((l2, "L2", ":"), (l3, "L3", "--")):
+            for val, label, style in ((l3, "L3", "--"),):
                 if val is not None:
                     ax.axvline(val, color="grey", linestyle=style, linewidth=1)
                     ax.text(val, 0.98, label, transform=ax.get_xaxis_transform(),
