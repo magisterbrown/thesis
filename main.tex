@@ -6,7 +6,7 @@
 \usepackage{booktabs}
 \usepackage{subcaption}
 \usepackage{listings}
-\usepackage{natbib}
+\usepackage[numbers,sort&compress]{natbib}
 \usepackage{csquotes}
 \usepackage{microtype}
 \usepackage{acronym}
@@ -45,7 +45,7 @@
 
 % Cover / title metadata
 \title[tudelft-white]{FINUFFT Performance Evaluation}
-\subtitle[tudelft-black]{Developing Heuristics for Efficient Parameter Selection}
+\subtitle[tudelft-black]{Stage-Level Cost Models for Parameter Selection}
 \author[tudelft-white]{Artur Brodovic}
 \affiliation{Technische Universiteit Delft}
 
@@ -81,7 +81,9 @@
 \input{chapters/07_appendix}
 
 % Bibliography
-\bibliographystyle{plainnat}
+\bibliographystyle{ieeetr}
+\clearpage
+\addcontentsline{toc}{chapter}{Bibliography}
 \bibliography{references}
 
 \end{document}
