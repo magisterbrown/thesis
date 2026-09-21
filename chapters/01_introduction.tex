@@ -31,6 +31,8 @@ This thesis addresses the following questions.
 
     \item \textbf{Through which mechanism does each parameter act, and where do the resulting trade-offs balance?} Rather than treating the transform as a single measurement, Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning} separate it into sorting, gathering, spreading, adding and the FFT, and attribute the effect of each parameter to the steps it speeds up and the steps it slows down. Because those effects oppose one another, each parameter has an interior optimum, and the question is what its position depends on: point density, dimension, requested tolerance, thread count, and the sizes of the levels of the cache hierarchy.
 
+    \item \textbf{Can the cost of each step be captured in a closed-form model accurate enough to predict good parameter values without measuring them?} For each trade-off identified by the previous question, Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning} derive a model from the structure of the algorithm and the sizes of the cache hierarchy -- the spreading and FFT costs as functions of $\sigma$, and the average subgrid size as a function of the subproblem size and bin shape -- and validate it against measurement. The question is how far each model reaches: whether it predicts absolute cost, only the ranking of candidate values, or neither, and which of its constants must still be measured on the target machine.
+
 \end{enumerate}
 
 \section{Contributions}
