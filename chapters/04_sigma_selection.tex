@@ -69,7 +69,7 @@ The FFT operates on the upsampled grid of total size $\tilde{N} = \mathrm{next23
 \end{figure}
 
 \section{Analytical Measurements}
-All timing measurements in this chapter were collected using Google Benchmark~\cite{googlebenchmark}. Google Benchmark provides statistical rigor by running each fixture repeatedly and reporting mean and standard deviation, automatically discarding warm-up iterations and compensating for clock resolution. It also integrates with hardware performance counters, enabling cycle-accurate comparisons across configurations. These properties make it well-suited for the fine-grained measurements of spreading and FFT cost required here. All runs were performed on a single machine: an Intel Xeon E5-2698 v4 CPU (2.20\,GHz, 20 cores / 40 threads, single socket, 50\,MiB L3 cache).
+All timing measurements in this chapter were collected with Google Benchmark~\cite{googlebenchmark} on the platform of Section~\ref{sec:platform}, following the procedure of Section~\ref{sec:timing}.
 
 \subsection{Validating FFT Cost Model}
 
@@ -91,7 +91,7 @@ $1/\log_2 \tilde{N}$ trend.
 
 \subsection{Validating the Spreading Cost Model}
 
-To validate the $w^d$ scaling predicted by the model, spreading time was measured across one, two and three dimensions for a range of $\sigma$ values at tolerance $\varepsilon = 10^{-6}$. As shown in Figure~\ref{fig:sigma_sweep_1e6}, the theoretical curves follow the same trajectory as the measurements, including the location of the minimum. Throughput changes in steps, because spreading is vectorised and at every kernel size the number of operations rounds up to the nearest multiple of the SIMD width. Appendix~\ref{app:sigma_sweep_full} shows the same graphs for a range of common transform configurations at several tolerances.
+To validate the $w^d$ scaling predicted by the model, spreading time was measured across one, two and three dimensions for a range of $\sigma$ values at tolerance $\varepsilon = 10^{-6}$. As shown in Figure~\ref{fig:sigma_sweep_1e6}, the theoretical curves follow the same trajectory as the measurements, including the location of the minimum. Throughput changes in steps, because spreading is vectorised and at every kernel size the number of operations rounds up to the nearest multiple of the SIMD width. Figure~\ref{fig:sigma_sweep_all} in Appendix~\ref{app:maxsp_sweeps} shows the same graphs for a range of common transform configurations at several tolerances.
 
 \begin{figure}[h]
     \centering

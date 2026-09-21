@@ -1,0 +1,90 @@
+\chapter{Experimental Setup and Methodology}
+\label{ch:methodology}
+
+This chapter collects the experimental setup shared by every measurement in the thesis: the machine, the software stack, the reference workload, and the way time and hardware events are measured and attributed to the individual steps of a transform. The chapters that follow refer back to it and state only what differs from it.
+
+\section{Test Platform}
+\label{sec:platform}
+
+All experiments in this thesis were run on a single machine, a one-socket server with an Intel Xeon E5-2698 v4 processor (Broadwell-EP microarchitecture). Its relevant properties are listed in Table~\ref{tab:platform}. The processor has one NUMA node, so every thread sees the same memory latency and the memory-contention effects discussed in Chapter~\ref{ch:parameter_tuning} are not confounded by remote-memory accesses. Because the two hardware threads of a core share that core's L1 and L2 caches, the per-thread cache share that the analytical models refer to is half of the per-core capacity whenever all $40$ hardware threads are in use.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|l|}
+        \hline
+        \textbf{Property} & \textbf{Value} \\
+        \hline
+        Processor & Intel Xeon E5-2698 v4 (Broadwell-EP) \\
+        Sockets / NUMA nodes & 1 / 1 \\
+        Cores / hardware threads & 20 / 40 (2-way SMT) \\
+        Clock frequency & 2.2\,GHz base, 3.6\,GHz maximum turbo, 1.2\,GHz minimum \\
+        L1 data cache & 32\,KiB per core (640\,KiB total) \\
+        L1 instruction cache & 32\,KiB per core \\
+        L2 cache & 256\,KiB per core (5\,MiB total) \\
+        L3 cache & 50\,MiB, shared by all cores \\
+        SIMD & AVX2, FMA \\
+        \hline
+    \end{tabular}
+    \caption{Test platform. All measurements in this thesis were taken on this machine.}
+    \label{tab:platform}
+\end{table}
+
+Single-threaded runs are pinned to logical CPU~0 with \texttt{taskset}, so that the operating system cannot migrate them between cores mid-measurement. Multi-threaded runs set the thread count through \texttt{OMP\_NUM\_THREADS}; runs described as using ``all threads'' use all $40$ hardware threads.
+% TODO: state OMP_PROC_BIND / OMP_PLACES if they were set, and whether turbo was left enabled.
+
+\section{Software}
+\label{sec:software}
+
+FINUFFT was built from source in CMake's \texttt{Release} configuration, with DUCC~\cite{ducc} selected as the FFT backend (\texttt{FINUFFT\_USE\_DUCC0=ON}). FFTW is therefore not used anywhere in this thesis: every FFT, and every FFT plan, referred to in the following chapters is DUCC's. The library was modified in one respect: the dimensions of the bins used to sort the nonuniform points are compile-time constants in FINUFFT, and were exposed as run-time options so that Chapters~\ref{ch:parameter_importance} and~\ref{ch:parameter_tuning} could vary them.
+% TODO: FINUFFT commit hash, compiler and version, OS / kernel version, perf version.
+
+Transforms are driven by the test programs that ship with FINUFFT (\texttt{perftest} and \texttt{spreadtestnd}), which time the stages of a transform with the library's own internal timers. Microbenchmarks of the FFT and of the spreading kernel in isolation use Google Benchmark~\cite{googlebenchmark}, and the parameter search of Chapter~\ref{ch:parameter_importance} uses Optuna~\cite{optuna2019}.
+
+\section{Reference Workload}
+\label{sec:workload}
+
+Unless a chapter states otherwise, measurements use one reference transform, chosen to be large enough that its working set far exceeds the L3 cache:
+
+\begin{itemize}
+    \item a type~1 transform in two dimensions, in double precision;
+    \item $M = 2^{30}/32 = 33{,}554{,}432$ nonuniform points, so that the point data (two coordinates and one complex strength, $32$ bytes per point) occupies one gibibyte;
+    \item $N_1 = N_2 = 5793$ Fourier modes, the integer nearest $\sqrt{M}$, which gives a density of $\rho = M/(N_1 N_2) \approx 1$ point per mode;
+    \item requested tolerance $\varepsilon = 10^{-6}$;
+    \item points drawn uniformly at random over the domain.
+\end{itemize}
+
+Sweeps over dimension, density, tolerance, thread count and point distribution change one of these properties at a time, and each figure caption states which.
+
+\section{Timing Whole Stages}
+\label{sec:timing}
+
+Sorting, spreading and the FFT each run as a separate phase of a transform, so each can be timed with a wall clock. These times are taken from FINUFFT's own internal timers, enabled with the \texttt{debug} and \texttt{spread\_debug} options, rather than around the library call, so that they exclude the test program's own setup. Every configuration is repeated, three times unless a chapter states otherwise, and where error bars are shown they are one standard deviation over the repetitions.
+% TODO: state which statistic (mean / median / minimum) the plotted values are.
+
+The microbenchmarks of Chapter~\ref{ch:sigma_selection} are run by Google Benchmark, which repeats each fixture until its total run time is long enough to be measured reliably and reports the mean time per iteration. Run with \texttt{--benchmark\_repetitions}, it repeats that whole measurement and additionally reports the mean and standard deviation across repetitions.
+
+\section{Attributing Cost to the Steps of Spreading}
+\label{sec:attribution}
+
+The three steps of processing a subproblem -- gathering its points, spreading them into a local subgrid, and adding the subgrid into the shared fine grid -- run interleaved inside a single OpenMP parallel region, with every thread working on a different subproblem at any moment. They cannot be separated with a clock. They are separated instead by the function the processor is executing, using the Linux \texttt{perf} profiler~\cite{perf,weaver2013}.
+
+Each configuration is run twice. The first run uses \texttt{perf stat}, which only reads the hardware counters at the start and end of the run and so does not perturb it; it yields the total number of cycles and the total count of every other event of interest. The second run uses \texttt{perf record}, which samples the same events and records the function executing at each sample. The share of samples that fall in each function then splits the total from \texttt{perf stat} between the steps. The functions are grouped as follows:
+
+\begin{itemize}
+    \item \textbf{sorting}: \texttt{bin\_sort\_singlethread} and \texttt{bin\_sort\_multithread};
+    \item \textbf{gathering}: the body of the OpenMP region in \texttt{spreadSorted}. The gather loop is inlined into this body rather than being a function of its own, so this bucket also contains the enclosing subproblem loop and the allocation and zeroing of each subgrid; it is an upper bound on gathering alone;
+    \item \textbf{spreading}: \texttt{spread\_subproblem\_$d$d} and its kernel instantiations;
+    \item \textbf{adding}: \texttt{add\_wrapped\_subgrid}.
+\end{itemize}
+
+The mechanism behind each effect is identified with further hardware events, attributed to the steps in the same way. The event names are those of Intel's performance-monitoring event list for the Broadwell microarchitecture~\cite{intelperfmon}; for example, \texttt{l1d\_pend\_miss.fb\_full} counts the cycles in which a demand request was blocked because no line-fill buffer was available. Events are defined where they are first used.
+
+\section{Parameter Search}
+\label{sec:search_method}
+
+The ranking of parameters in Chapter~\ref{ch:parameter_importance} comes from a joint search over six parameters, not from varying them one at a time. Optuna's Gaussian-process sampler proposes configurations of the reference workload and minimises the measured time of \texttt{setpts} plus \texttt{execute}; \texttt{setpts} is included because the bin sort happens there, and a search that timed \texttt{execute} alone could not see the bin dimensions. Each trial is repeated, but repetitions stop early once a trial has already exceeded the best time found so far, since it can no longer win; the first repetition always completes, so every trial contributes a real measurement. Trials that exceed a time limit are recorded at that limit. The contribution of each parameter to the variance of the result is then computed with fANOVA~\cite{hutter2014fanova}, as implemented in Optuna.
+
+\section{Modelling Approach}
+\label{sec:modelling}
+
+Wherever possible, the quantities that govern a trade-off are captured in analytical models rather than left as measurements, so that the performance of a configuration can be predicted instead of timed. A model is derived in closed form from the structure of the algorithm and the specification of the processor, such as the cache sizes in Table~\ref{tab:platform}, and is validated against the library's own behaviour. The average size of the subgrid produced by a given subproblem size and bin shape is one such quantity: it follows from the way points are binned, it can be written down exactly, and once known it predicts the cost of the adding step for configurations that were never measured, since that cost is proportional to the number of cells written. Where a quantity depends instead on properties of the machine that no specification states, such as the cost of a cache miss or the bandwidth available to a thread, the model is written in terms of the relevant hardware sizes and the constants are left to be measured.
