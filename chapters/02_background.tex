@@ -39,6 +39,8 @@ Two consequences follow for performance, and they explain why type 3 behaves dif
 
 The spreading phase is the one this thesis is most concerned with, and it is not a single loop. The sorted points are divided into subproblems, each processed by one thread into a private buffer called a subgrid, so that threads do not contend for the shared output grid. Processing a subproblem has three steps: \emph{gathering}, which copies the subproblem's coordinates and strengths out of the sorted arrays into contiguous scratch space; \emph{spreading}, which evaluates the kernel around each point and accumulates it into the subgrid; and \emph{adding}, which accumulates the finished subgrid back into the shared output grid, wrapping at the periodic boundary. Interpolation, the type-2 direction, has no adding step, since it reads from the grid rather than writing to it. Chapter~\ref{ch:parameter_tuning} shows that these three steps respond to the spreader's parameters in different, and often opposing, directions.
 
+%Processing a single subproblem during \texttt{execute} consists of three steps. \emph{Gathering} loads the coordinates and strengths of that subproblem's assigned points into a local buffer and allocates the local subgrid they will be spread onto. \emph{Spreading} then accumulates each point's contribution into that local subgrid, appkklying the spreading kernel over the $w^d$ neighbourhood of cells around each point. \emph{Adding} (\texttt{add\_wrapped\_subgrid}) finally writes the finished local subgrid back into the shared global fine grid.
+
 \section{Related Work}
 \label{sec:related_work}
 

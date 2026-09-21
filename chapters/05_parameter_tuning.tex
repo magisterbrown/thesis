@@ -13,8 +13,6 @@ Beyond $\sigma$, which was treated in Chapter~\ref{ch:sigma_selection}, paramete
 
 FINUFFT algorithm projects non uniform points onto uniform grid. To project points in efficiently, they are first sorted into bins and then processed in batches. This chapter will analyze how both parameters under Consideration affect throughout during these stages.
 
-\subsection{Processing of subproblem}
-Processing a single subproblem during \texttt{execute} consists of three steps. \emph{Gathering} loads the coordinates and strengths of that subproblem's assigned points into a local buffer and allocates the local subgrid they will be spread onto. \emph{Spreading} then accumulates each point's contribution into that local subgrid, applying the spreading kernel over the $w^d$ neighbourhood of cells around each point. \emph{Adding} (\texttt{add\_wrapped\_subgrid}) finally writes the finished local subgrid back into the shared global fine grid.
 
 \section{Subgrid size}
 \label{sec:subgrid_size}
@@ -71,13 +69,13 @@ which reduces to \eqref{eq:subgrid_2d} in two dimensions, where there are no sla
 
 The slab-crossing subgrids are rare but decisive, and their number is fixed by the geometry rather than by the tuning parameter: there are $N_z / b_z$ slabs, so however small $S_{\max}$ is made, that many subproblems still span a full $x$--$y$ plane each. In the measurements below this is $53$ subgrids at every $S_{\max}$, out of populations ranging from $40$ to $20{,}000$. Equation~\eqref{eq:subgrid_3d} reproduces the logged three-dimensional subgrid sizes to within $0.3\%$ across a five-hundredfold range of $S_{\max}$, covering all three regimes.
 
-Figure~\ref{tab:subgrid_pred} compares the three predictions against subgrid sizes logged directly from the spreader, at unit density and with $b_x = 16$, $b_y = b_z = 4$ and $w = 7$. Each row averages every subgrid built during one transform, from $40$ subgrids at the largest subproblem size up to $20{,}000$ at the smallest. All three agree to within $1\%$, and the residual is largest at small $S_{\max}$, where the discrete number of bins a run touches is least well described by its average.
+Table~\ref{tab:subgrid_pred} compares the three predictions against subgrid sizes logged directly from the spreader, at unit density and with $b_x = 16$, $b_y = b_z = 4$ and $w = 7$. Each row averages every subgrid built during one transform, from $40$ subgrids at the largest subproblem size up to $20{,}000$ at the smallest. All three agree to within $1\%$, and the residual is largest at small $S_{\max}$, where the discrete number of bins a run touches is least well described by its average.
 
-\begin{figure}[h]
+\begin{table}[h]
     \centering
     \scriptsize
     \setlength{\tabcolsep}{2.5pt}
-    \begin{subfigure}[t]{0.32\textwidth}
+    \begin{subtable}[t]{0.32\textwidth}
         \centering
         \begin{tabular}{rrrr}
             \hline
@@ -95,9 +93,9 @@ Figure~\ref{tab:subgrid_pred} compares the three predictions against subgrid siz
         \end{tabular}
         \caption{1D, $N = 10^7$.}
         \label{tab:subgrid_1d}
-    \end{subfigure}
+    \end{subtable}
     \hfill
-    \begin{subfigure}[t]{0.32\textwidth}
+    \begin{subtable}[t]{0.32\textwidth}
         \centering
         \begin{tabular}{rrrr}
             \hline
@@ -115,9 +113,9 @@ Figure~\ref{tab:subgrid_pred} compares the three predictions against subgrid siz
         \end{tabular}
         \caption{2D, $N_x = N_y = 3162$.}
         \label{tab:subgrid_2d}
-    \end{subfigure}
+    \end{subtable}
     \hfill
-    \begin{subfigure}[t]{0.32\textwidth}
+    \begin{subtable}[t]{0.32\textwidth}
         \centering
         \begin{tabular}{rrrr}
             \hline
@@ -136,10 +134,10 @@ Figure~\ref{tab:subgrid_pred} compares the three predictions against subgrid siz
         \end{tabular}
         \caption{3D, $N_x = N_y = N_z = 215$.}
         \label{tab:subgrid_3d}
-    \end{subfigure}
+    \end{subtable}
     \caption{Predicted against measured subgrid size, from \eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and \eqref{eq:subgrid_3d}, at unit density with $M = 10^7$.}
     \label{tab:subgrid_pred}
-\end{figure}
+\end{table}
 
 
 \begin{figure}[h]
