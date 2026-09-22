@@ -52,7 +52,7 @@ The spreading step accumulates contributions from each of the $M$ non-uniform so
     w = \left\lceil \frac{\log\!\left(\dfrac{0.18 \cdot 1.4^{d-1}}{\varepsilon}\right)}{\pi \sqrt{1 - 1/\sigma}} + 1 \right\rceil.
     \label{eq:kernel_width}
 \end{equation}
-The theoretical spreading cost is therefore proportional to $M w^d$. In practice the inner loop is vectorised, so the per-point work scales as $\lceil w / W_{\mathrm{simd}} \rceil \cdot w^{d-1}$, where $W_{\mathrm{simd}}$ is the SIMD vector width in grid points.
+The theoretical spreading cost is therefore proportional to $M w^d$. In practice the inner loop is vectorised, so the per-point work scales as $\lceil w / W_{\mathrm{simd}} \rceil \cdot w^{d-1}$, where $W_{\mathrm{simd}}$ is the SIMD vector width in grid points. Counting operations in this way assumes that spreading is compute-bound, in the sense of the Roofline model (Section~\ref{sec:related_perf}): each point costs $w^d$ kernel evaluations and multiply--adds, while the subgrid it writes into is reused by every nearby point and stays in cache, so the arithmetic intensity is high and the cost follows the operation count rather than the bytes moved.
 
 \subsection{Estimating FFT Cost}
 
@@ -82,9 +82,10 @@ per-call overhead is amortised over an increasing number of points. For larger t
 the single-threaded throughput follows the $1/\log_2 \tilde{N}$ trend. The throughput of a
 transform that uses all threads on the machine, however, keeps increasing as long as the
 whole transform fits in the L3 cache.
-DUCC implements the FFT with a mixed-radix Cooley--Tukey algorithm, which performs only
-$\mathcal{O}(\log \tilde{N})$ pralelized over multiple threads arithmetic operations, per element and is therefore limited by
-memory bandwidth rather than by arithmetic throughput. As long as all points fit in the L3
+DUCC implements the FFT with the mixed-radix Cooley--Tukey algorithm inherited from FFTPACK
+(Section~\ref{sec:related_ducc}). Each of its $\mathcal{O}(\log \tilde{N})$ passes performs only a
+few arithmetic operations per element, whether the transform runs on one thread or many, so it is
+limited by memory bandwidth rather than by arithmetic throughput. As long as all points fit in the L3
 cache, the successive passes over the array are served without loads from main memory. Once
 the array spills into main memory, the parallel version also settles onto the
 $1/\log_2 \tilde{N}$ trend.

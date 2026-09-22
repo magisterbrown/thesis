@@ -26,41 +26,41 @@ Below, is the list of comments from my first pass:
 
  
 
-- 11 references is too few for an MSc thesis. Uncited but used: fANOVA, Gaussian-process Bayesian optimisation, Intel's counter documentation (SDM), the OpenMP specification, the FINUFFT version or commit, and perf itself.
+// - 11 references is too few for an MSc thesis. Uncited but used: fANOVA, Gaussian-process Bayesian optimisation, Intel's counter documentation (SDM), the OpenMP specification, the FINUFFT version or commit, and perf itself.
 
  
 
  
 
-Chapter 1:
+//Chapter 1:
+//
+//- The motivation overstates the problem. 1.1 cites an order-of-magnitude spread in runtimes and "several times slower… a few keystrokes away". But Chapter 3 finds that the spread comes almost entirely from turning sorting off, the easiest parameter to reason about. The defaults are within 5.2% of the best configuration found. The text says the opposite ("the ones a user is least equipped to reason about").
+//
+//- What do you mean by "in a configuration several times slower than one a few keystrokes away".
 
-- The motivation overstates the problem. 1.1 cites an order-of-magnitude spread in runtimes and "several times slower… a few keystrokes away". But Chapter 3 finds that the spread comes almost entirely from turning sorting off, the easiest parameter to reason about. The defaults are within 5.2% of the best configuration found. The text says the opposite ("the ones a user is least equipped to reason about").
+//- 1.3 is really methodology. It covers the perf profiler, counters and model philosophy, which belongs in a setup chapter. Research questions normally come before the approach, not after.
 
-- What do you mean by "in a configuration several times slower than one a few keystrokes away".
-
-- 1.3 is really methodology. It covers the perf profiler, counters and model philosophy, which belongs in a setup chapter. Research questions normally come before the approach, not after.
-
-- The σ contribution isn't supported. It claims "the optimum generally lies inside [1.25, 2.00], where the library's two-valued heuristic cannot reach it". Chapter 4 never combines the spreading and FFT costs or measures a total-cost optimum. Chapter 3's best configuration used σ = 1.25, which is the default and an endpoint.
-
- 
+// - The σ contribution isn't supported. It claims "the optimum generally lies inside [1.25, 2.00], where the library's two-valued heuristic cannot reach it". Chapter 4 never combines the spreading and FFT costs or measures a total-cost optimum. Chapter 3's best configuration used σ = 1.25, which is the default and an endpoint.
 
  
 
-Chapter 2: Background
+ 
 
-- Related work is thin. Obvious omissions include:
-
-  - FFTW's measure-based planning (Frigo & Johnson), the closest analogue to measurement-driven tuning;
-
-  - NFFT3 (Keiner, Kunis & Potts);
-
-  - cuFINUFFT (Shih et al.), which reuses bin sorting and subproblems on GPUs;
-
-  - Barnett's analysis of the ES kernel's aliasing error;
-
-  - the Roofline model;
-
-  - general autotuning frameworks such as OpenTuner.
+//Chapter 2: Background
+//
+//- Related work is thin. Obvious omissions include:
+//
+//  - FFTW's measure-based planning (Frigo & Johnson), the closest analogue to measurement-driven tuning;
+//
+//  - NFFT3 (Keiner, Kunis & Potts);
+//
+//  - cuFINUFFT (Shih et al.), which reuses bin sorting and subproblems on GPUs;
+//
+//  - Barnett's analysis of the ES kernel's aliasing error;
+//
+//  - the Roofline model;
+//
+//  - general autotuning frameworks such as OpenTuner.
 
 - The FFT backend description is inconsistent and partly wrong:
 
