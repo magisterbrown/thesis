@@ -35,7 +35,7 @@ Single-threaded runs are pinned to logical CPU~0 with \texttt{taskset}, so that 
 \section{Software}
 \label{sec:software}
 
-FINUFFT was built from source in CMake's \texttt{Release} configuration, with DUCC~\cite{ducc} selected as the FFT backend (\texttt{FINUFFT\_USE\_DUCC0=ON}). FFTW is therefore not used anywhere in this thesis: every FFT, and every FFT plan, referred to in the following chapters is DUCC's. The library was modified in one respect: the dimensions of the bins used to sort the nonuniform points are compile-time constants in FINUFFT, and were exposed as run-time options so that Chapters~\ref{ch:parameter_importance} and~\ref{ch:parameter_tuning} could vary them.
+FINUFFT~\cite{finufftsoftware} was built from source in CMake's \texttt{Release} configuration, with DUCC~\cite{ducc} selected as the FFT backend (\texttt{FINUFFT\_USE\_DUCC0=ON}). FFTW is therefore not used anywhere in this thesis: every FFT, and every FFT plan, referred to in the following chapters is DUCC's. The library was modified in one respect: the dimensions of the bins used to sort the nonuniform points are compile-time constants in FINUFFT, and were exposed as run-time options so that Chapters~\ref{ch:parameter_importance} and~\ref{ch:parameter_tuning} could vary them.
 % TODO: FINUFFT commit hash, compiler and version, OS / kernel version, perf version.
 
 Transforms are driven by the test programs that ship with FINUFFT (\texttt{perftest} and \texttt{spreadtestnd}), which time the stages of a transform with the library's own internal timers. Microbenchmarks of the FFT and of the spreading kernel in isolation use Google Benchmark~\cite{googlebenchmark}, and the parameter search of Chapter~\ref{ch:parameter_importance} uses Optuna~\cite{optuna2019}.
@@ -66,7 +66,7 @@ The microbenchmarks of Chapter~\ref{ch:sigma_selection} are run by Google Benchm
 \section{Attributing Cost to the Steps of Spreading}
 \label{sec:attribution}
 
-The three steps of processing a subproblem -- gathering its points, spreading them into a local subgrid, and adding the subgrid into the shared fine grid -- run interleaved inside a single OpenMP parallel region, with every thread working on a different subproblem at any moment. They cannot be separated with a clock. They are separated instead by the function the processor is executing, using the Linux \texttt{perf} profiler~\cite{perf,weaver2013}.
+The three steps of processing a subproblem -- gathering its points, spreading them into a local subgrid, and adding the subgrid into the shared fine grid -- run interleaved inside a single OpenMP~\cite{openmp52} parallel region, with every thread working on a different subproblem at any moment. They cannot be separated with a clock. They are separated instead by the function the processor is executing, using the Linux \texttt{perf} profiler~\cite{perf,weaver2013}.
 
 Each configuration is run twice. The first run uses \texttt{perf stat}, which only reads the hardware counters at the start and end of the run and so does not perturb it; it yields the total number of cycles and the total count of every other event of interest. The second run uses \texttt{perf record}, which samples the same events and records the function executing at each sample. The share of samples that fall in each function then splits the total from \texttt{perf stat} between the steps. The functions are grouped as follows:
 
@@ -77,12 +77,12 @@ Each configuration is run twice. The first run uses \texttt{perf stat}, which on
     \item \textbf{adding}: \texttt{add\_wrapped\_subgrid}.
 \end{itemize}
 
-The mechanism behind each effect is identified with further hardware events, attributed to the steps in the same way. The event names are those of Intel's performance-monitoring event list for the Broadwell microarchitecture~\cite{intelperfmon}; for example, \texttt{l1d\_pend\_miss.fb\_full} counts the cycles in which a demand request was blocked because no line-fill buffer was available. Events are defined where they are first used.
+The mechanism behind each effect is identified with further hardware events, attributed to the steps in the same way. The event names are those of Intel's performance-monitoring event list for the Broadwell microarchitecture~\cite{intelperfmon}, and the counters themselves are described in Intel's Software Developer's Manual~\cite{intelsdm}; for example, \texttt{l1d\_pend\_miss.fb\_full} counts the cycles in which a demand request was blocked because no line-fill buffer was available. Events are defined where they are first used.
 
 \section{Parameter Search}
 \label{sec:search_method}
 
-The ranking of parameters in Chapter~\ref{ch:parameter_importance} comes from a joint search over six parameters, not from varying them one at a time. Optuna's Gaussian-process sampler proposes configurations of the reference workload and minimises the measured time of \texttt{setpts} plus \texttt{execute}; \texttt{setpts} is included because the bin sort happens there, and a search that timed \texttt{execute} alone could not see the bin dimensions. Each trial is repeated, but repetitions stop early once a trial has already exceeded the best time found so far, since it can no longer win; the first repetition always completes, so every trial contributes a real measurement. Trials that exceed a time limit are recorded at that limit. The contribution of each parameter to the variance of the result is then computed with fANOVA~\cite{hutter2014fanova}, as implemented in Optuna.
+The ranking of parameters in Chapter~\ref{ch:parameter_importance} comes from a joint search over six parameters, not from varying them one at a time. Optuna's Gaussian-process sampler, a form of Bayesian optimisation~\cite{rasmussen2006,snoek2012}, proposes configurations of the reference workload and minimises the measured time of \texttt{setpts} plus \texttt{execute}; \texttt{setpts} is included because the bin sort happens there, and a search that timed \texttt{execute} alone could not see the bin dimensions. Each trial is repeated, but repetitions stop early once a trial has already exceeded the best time found so far, since it can no longer win; the first repetition always completes, so every trial contributes a real measurement. Trials that exceed a time limit are recorded at that limit. The contribution of each parameter to the variance of the result is then computed with fANOVA~\cite{hutter2014fanova}, as implemented in Optuna.
 
 \section{Modelling Approach}
 \label{sec:modelling}
