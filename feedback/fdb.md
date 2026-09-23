@@ -138,7 +138,7 @@ Below, is the list of comments from my first pass:
 
 Chapter 6: Conclusion
 
-- The research questions aren't answered explicitly, one by one.
+//- The research questions aren't answered explicitly, one by one.
 
 - It overstates. "Essentially all of the work" contradicts Chapter 3's 10–20% share for setpts. It says closed-form models were given for both σ costs, but Chapter 4 showed the FFT model isn't predictive. The Smax trade-off is described differently than in Chapter 5 ("write traffic vs load imbalance" instead of gathering vs adding).
 

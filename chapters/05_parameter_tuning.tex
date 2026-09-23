@@ -214,7 +214,7 @@ Figure~\ref{fig:thread_busy_hist} makes the effect visible directly. It reports 
 
 
 
-\subsection{Older heuristics}
+\subsection{The current heuristic}
 The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{thr}}$ in two and three dimensions, and to the minimum of $10^4$ and $M/n_{\text{thr}}$ in one. These constants are suboptimal, because a fixed number of points might not land on the balance point: that point is where the falling cost of adding meets the rising cost of gathering. The sweep of the previous section shows how far the fixed value can sit from it. For the transform measured there the two steps cross at $S_{\max} \approx 2000$, where the phase costs $363$\,ms, while the constant the heuristic selects, $10^5$, costs about $524$\,ms -- a factor of $1.44$ for a value that is fifty times too large. 
 
 
@@ -381,7 +381,7 @@ Finally, bin size sets the size of the subgrids, through the formulas already de
         \caption{Adding: mean subgrid area, the cycles the adding step spends, and those cycles per subgrid cell.}
         \label{tab:binsize_subgrid}
     \end{subtable}
-    \caption{Bin size acting on the three steps it controls, for a 2D, $1$\,GiB, unit-density transform on 64 threads.}
+    \caption{Bin size acting on the three steps it controls, for a 2D, $1$\,GiB, unit-density transform on all $40$ hardware threads of the test platform of Section~\ref{sec:platform}.}
     \label{tab:binsize_all}
 \end{table}
 
