@@ -8,8 +8,8 @@ thread of the node, and a single-threaded run at unit density. The last isolates
 the effect of S_max from thread contention, which is what makes gathering rise
 in the first two.
 
-The panels have independent y axes on purpose: adding costs 723 ms at the low
-density and 12 ms at the high one, so a shared scale would flatten the right
+The panels have independent y axes on purpose: adding costs two orders of
+magnitude more cycles at the low density than at the high one, so a shared scale would flatten the right
 panel entirely. What the figure is for is which of the two steps dominates and
 whether they cross, not the absolute heights.
 
@@ -48,14 +48,14 @@ def main():
     for ax, (rho, thr) in zip(axes[0], cases):
         v = by[(rho, thr)]
         x = [int(r["max_sp"]) for r in v]
-        ax.plot(x, [float(r["gather_ms"]) for r in v], "-o", lw=1.8, ms=4,
-                color=GATHER, label="gathering")
-        ax.plot(x, [float(r["add_ms"]) for r in v], "-o", lw=1.8, ms=4,
+        ax.plot(x, [float(r["gather_cycles"]) / 1e9 for r in v], "-o", lw=1.8,
+                ms=4, color=GATHER, label="gathering")
+        ax.plot(x, [float(r["add_cycles"]) / 1e9 for r in v], "-o", lw=1.8, ms=4,
                 color=ADD, label="adding")
         ax.set_xscale("log")
         ax.set_ylim(bottom=0)
         ax.set_xlabel(r"$S_{\max}$")
-        ax.set_ylabel("time [ms]")
+        ax.set_ylabel(r"cycles [$10^9$]")
         nthr = "all threads" if thr == "all" else f"{thr} thread"
         ax.set_title(rf"$\rho$ = {rho:g}, {nthr}", loc="left", fontsize=11)
         ax.legend(fontsize=9, framealpha=0.95)

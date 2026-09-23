@@ -177,7 +177,7 @@ A larger $S_{\max}$ reduces the total number of subproblems, thereby lowering sc
 $S_{\max}$ determines the amount of memory dedicated to subproblem processing. During the gathering step, the algorithm loads this number of points with their coordinates into the memory buffer.
 Finally, $S_{\max}$ fixes the size of the subgrid for each subproblem, through the relations derived in Section~\ref{sec:subgrid_size}: \eqref{eq:subgrid_1d} in one dimension, \eqref{eq:subgrid_2d} in two and \eqref{eq:subgrid_3d} in three. 
 
-Figure~\ref{fig:maxsp_steps} measures the cost of a subproblem across the range, as wall-clock time, on a 2D transform of $1$\,GiB of nonuniform points at unit density on $64$ threads. The horizontal axis is $S_{\max}$ on a logarithmic scale, from $10^4$ up to $M/n_{\mathrm{thr}} = 524{,}288$, the value at which each thread receives a single subproblem and beyond which the spreader ignores further increases; the number of subproblems the transform is divided into therefore falls from $3355$ at the left edge to $64$ at the right. The curve is the time the spreading phase takes, that is gathering, spreading and adding together, as measured by FINUFFT's own timer.
+Figure~\ref{fig:maxsp_steps} measures the cost of a subproblem across the range, as wall-clock time, on a 2D transform of $1$\,GiB of nonuniform points at unit density, on all threads of the test platform of Section~\ref{sec:platform}. The horizontal axis is $S_{\max}$ on a logarithmic scale, from $10^4$ up to $M/n_{\mathrm{thr}} = 524{,}288$, the value at which each thread receives a single subproblem and beyond which the spreader ignores further increases; the number of subproblems the transform is divided into therefore falls from $3355$ at the left edge to $40$ at the right. The curve is the time the spreading phase takes, that is gathering, spreading and adding together, as measured by FINUFFT's own timer.
 
 The steps themselves are compared in cycles rather than wall-clock time, in Figure~\ref{fig:maxsp_cycles}, because cycles count work actually performed and summed over threads, whereas the wall time of a phase also counts threads that have run out of work and are waiting. Measured that way the two large steps move against each other. Adding falls from $10.0$ to $1.8$ billion cycles, a factor of $5.5$, because fewer and larger subproblems produce less total subgrid volume to write back: the padding of half a kernel width around every subgrid is paid once per subproblem, so its share of the whole shrinks as subproblems grow. Gathering moves the other way, from $7.4$ to $12.2$ billion cycles, but only by a factor of $1.7$, and it stops growing beyond $S_{\max} \approx 10^5$, peaking at $13.3$ billion near $1.6 \times 10^5$. Spreading is the least sensitive of the three, drifting down by about a quarter, from $4.3$ to $3.2$ billion cycles.
 
@@ -206,7 +206,7 @@ The gap between the two views is load imbalance. The three steps together accoun
 
 
 \subsection{Older heuristics}
-The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $N/n_{\text{thr}}$ for type-2 and type-3 transforms, and to the minimum of $10^4$ and $N/n_{\text{thr}}$ for type-1 transforms. These constants are suboptimal: they introduce extra OpenMP scheduling overhead, and for transforms with very low density, the subgrid can end up very large and spill out of cache into main memory.
+The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $N/n_{\text{thr}}$ for 2D and 3D transforms, and to the minimum of $10^4$ and $N/n_{\text{thr}}$ for 1D transforms. These constants are suboptimal: they introduce extra OpenMP scheduling overhead, and for transforms with very low density, the subgrid can end up very large and spill out of cache into main memory.
 
 
 \subsection{Effect on gathering.}
@@ -246,14 +246,14 @@ raises the number of subproblems and therefore raises how many extra points must
 traversed, even though each individual subgrid is smaller. Adding is also the more expensive operation per cell,
 since it accumulates into the shared fine grid under an atomic update.
 
-Figure~\ref{fig:maxsp_addvol} shows the measured adding time alongside the write volume the
-subgrid model predicts, $A(S_{\max}) \cdot n_{\mathrm{sub}}$. Adding time is almost perfectly
+Figure~\ref{fig:maxsp_addvol} shows the measured adding cycles alongside the write volume the
+subgrid model predicts, $A(S_{\max}) \cdot n_{\mathrm{sub}}$. The cost of adding is almost perfectly
 predicted by the number of cells written.
 
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/maxsp_steps/maxsp_addvol.pdf}
-    \caption{Measured adding time and the number of cells written predicted by the subgrid model, against $S_{\max}$.}
+    \caption{Measured adding cycles and the number of cells written predicted by the subgrid model, against $S_{\max}$.}
     \label{fig:maxsp_addvol}
 \end{figure}
 
@@ -267,8 +267,8 @@ spreads across a large subgrid. Small subproblems therefore perform better when 
 high, and large subproblems when density is low. The first two panels of
 Figure~\ref{fig:maxsp_density} show the two extremes: at $\rho = 0.125$ adding dominates
 throughout and falls as $S_{\max}$ grows, while at $\rho = 16$ it is already small and
-gathering, which rises, decides the choice. Finally, in single-threaded transforms gathering
-time does not change much with $S_{\max}$, as the third panel of the same figure shows, so it
+gathering, which rises, decides the choice. Finally, in single-threaded transforms the cycles
+spent gathering do not change much with $S_{\max}$, as the third panel of the same figure shows, so it
 is better to use large subproblems and minimise the total number of cells written. The full
 sweep, over every combination of dimension, density and thread count, is given in
 Figure~\ref{fig:smax_sweep_all} in Appendix~\ref{app:maxsp_sweeps}.
@@ -276,7 +276,7 @@ Figure~\ref{fig:smax_sweep_all} in Appendix~\ref{app:maxsp_sweeps}.
 \begin{figure}[h]
     \centering
     \includegraphics[width=\textwidth]{figures/maxsp_density/maxsp_density.pdf}
-    \caption{Gathering and adding time against $S_{\max}$ at low and high point density, and at unit density on a single thread.}
+    \caption{Cycles spent gathering and adding against $S_{\max}$ at low and high point density, and at unit density on a single thread.}
     \label{fig:maxsp_density}
 \end{figure}
 
@@ -297,7 +297,7 @@ The sort itself makes two passes over the points: the first counts how many fall
 \end{figure}
 
 
-Bin size does not only affect sorting, however -- it also reaches the spreading and adding steps downstream. Because points keep an arbitrary order inside a bin, a subproblem's writes are scattered over the whole grid region the bin covers, so the working set spreading holds at any moment is $16b_x*b_y$ grid bytes at one complex double per cell. This is a level lower in the hierarchy than the subgrid itself: the region is written repeatedly while a bin is being consumed, so what matters is whether it fits in the $48$\,KB L1 data cache of a core rather than in L2. Table~\ref{tab:spread_l2} shows the two regimes. While the padded bin stays inside L1d, spreading is flat at $3.1$--$3.2$ Gcycles and its L1 line fills sit at a floor of about $0.035\times10^9$, unchanged over a sixtyfold range of bin volume. Once the region no longer fits, every write starts pulling a line and the fills climb from $0.041\times10^9$ at the default $16\times4$ to $0.66\times10^9$. Up to $384\times96$ the growth is entirely L1: the L1 fills rise by $0.58\times10^9$ while the L2 fills stay at their own floor near $0.03\times10^9$, and spreading gains only $0.94$ Gcycles, about $1.6$ per additional fill, because each miss is served by L2 and never reaches memory. Beyond that the L1 fills saturate.  Over the last three rows the L2 fills rise fifteenfold to $0.50\times10^9$ and spreading jumps from $4.1$ to $16.9$ Gcycles, some $28$ cycles per additional L2 miss. The first regime is therefore mild and the second is not: an L1 miss costs a few cycles, an L2 miss costs an order of magnitude more, and a bin large enough to overflow both is penalised by each in succession.
+Bin size does not only affect sorting, however -- it also reaches the spreading and adding steps downstream. Because points keep an arbitrary order inside a bin, a subproblem's writes are scattered over the whole grid region the bin covers, so the working set spreading holds at any moment is the subgrid those points are written into: the region the bin covers, enlarged by half a kernel width on each side so that a point at the edge can deposit its full $w^d$ neighbourhood, which is $16\,(b_x + w)(b_y + w)$ bytes at one complex double per cell. The region is written repeatedly while a bin is being consumed, so what matters is whether it fits in the $48$\,KB L1 data cache of a core rather than in L2. Table~\ref{tab:spread_l2} shows the two regimes. While the padded bin stays inside L1d, spreading is flat at $3.1$--$3.2$ Gcycles and its L1 line fills sit at a floor of about $0.035\times10^9$, unchanged over a sixtyfold range of bin volume. Once the region no longer fits, every write starts pulling a line and the fills climb from $0.041\times10^9$ at the default $16\times4$ to $0.66\times10^9$. Up to $384\times96$ the growth is entirely L1: the L1 fills rise by $0.58\times10^9$ while the L2 fills stay at their own floor near $0.03\times10^9$, and spreading gains only $0.94$ Gcycles, about $1.6$ per additional fill, because each miss is served by L2 and never reaches memory. Beyond that the L1 fills saturate.  Over the last three rows the L2 fills rise fifteenfold to $0.50\times10^9$ and spreading jumps from $4.1$ to $16.9$ Gcycles, some $28$ cycles per additional L2 miss. The first regime is therefore mild and the second is not: an L1 miss costs a few cycles, an L2 miss costs an order of magnitude more, and a bin large enough to overflow both is penalised by each in succession.
 
 In terms of the Roofline model (Section~\ref{sec:related_perf}), spreading is compute-bound while the padded bin fits in L1d: its arithmetic per point is fixed by the kernel width, and its cost is flat regardless of bin size. A larger bin does not change that arithmetic, but it moves the data the arithmetic works on down the hierarchy, so the step falls first under the roof set by L2 bandwidth and then under the one set by memory. The practical consequence is that bin area should fit into some level of cache hierarchy to preserve memory locality.
 

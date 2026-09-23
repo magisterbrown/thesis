@@ -52,14 +52,6 @@ def histogram(ax, times):
         ax.annotate(lab, (x, yf), xycoords=("data", "axes fraction"),
                     textcoords="offset points", xytext=(dx, 0), ha=ha,
                     va="center", fontsize=8.5, color=c)
-    # everything slower than the cap was stopped there, so the last bar is a
-    # floor on those trials rather than a measurement
-    n_cens = sum(t >= TIMEOUT_S for t in times)
-    if n_cens:
-        ax.annotate(f"{n_cens} trials stopped\nat the {TIMEOUT_S:g} s cap",
-                    (TIMEOUT_S, 0.55), xycoords=("data", "axes fraction"),
-                    textcoords="offset points", xytext=(-6, 0), ha="right",
-                    fontsize=8, color="0.35")
     ax.set_xscale("log")
     ax.set_xlabel("setpts + execute time [s]")
     ax.set_ylabel("trials")

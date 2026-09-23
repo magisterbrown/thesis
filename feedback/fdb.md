@@ -62,69 +62,69 @@ Below, is the list of comments from my first pass:
 //
 //  - general autotuning frameworks such as OpenTuner.
 
-- The FFT backend description is inconsistent and partly wrong:
-
-  - 2.2.2 says DUCC is used throughout, but 3.3 and 3.4 talk about FFTW. What is the difference?
-
-  - 4.5.1 calls DUCC a "mixed-radix Cooley–Tukey" FFT, while 2.2.2 describes it as derived from FFTPACK.
-
-  - Are you sure about "prime length costs O(N2)" for pocketfft and DUCC?
-
-- Type 3 gets about a page, then is never analysed. maybe a paragrah is enough?
-
- 
+//- The FFT backend description is inconsistent and partly wrong:
+//
+//  - 2.2.2 says DUCC is used throughout, but 3.3 and 3.4 talk about FFTW. What is the difference?
+//
+//  - 4.5.1 calls DUCC a "mixed-radix Cooley–Tukey" FFT, while 2.2.2 describes it as derived from FFTPACK.
+//
+//  - Are you sure about "prime length costs O(N2)" for pocketfft and DUCC?
+//
+//- Type 3 gets about a page, then is never analysed. maybe a paragrah is enough?
 
  
 
-Chapter 3: Exploring Parameter Importance
+ 
 
-- 3.1 says "we vary each parameter independently while holding others fixed", but 3.4 and 6.1 say "joint Gaussian-process search".
+//Chapter 3: Exploring Parameter Importance
+//
+//- 3.1 says "we vary each parameter independently while holding others fixed", but 3.4 and 6.1 say "joint Gaussian-process search".
 
-- Numbers don't match. The text gives best 0.4825 s and default 0.5087 s; Fig. 3.2 shows 0.474 s and 0.509 s.
+//- Numbers don't match. The text gives best 0.4825 s and default 0.5087 s; Fig. 3.2 shows 0.474 s and 0.509 s.
 
-- Is spread_max_sp_size the same as Smax?
+//- Is spread_max_sp_size the same as Smax?
 
-- The 5.2% gain isn't attributed. How did you calculate that? What are the two numbers that resulted in 5.2% gain? The atomic threshold has the same value in both columns of Table 3.1, and that table reports it as "atomic update" instead of the actual threshold number.
+//- The 5.2% gain isn't attributed. How did you calculate that? What are the two numbers that resulted in 5.2% gain? The atomic threshold has the same value in both columns of Table 3.1, and that table reports it as "atomic update" instead of the actual threshold number.
 
 - How did you find 5793? 5793×5793=33,558,849 But M=33,554,432.
 
-- The default Smax contradicts Chapter 5. Table 3.1 lists 10^5 for this type-1 transform, while 5.3.1 says type-1 transforms use 10^4. Check the source.
+//- The default Smax contradicts Chapter 5. Table 3.1 lists 10^5 for this type-1 transform, while 5.3.1 says type-1 transforms use 10^4. Check the source.
 
-- "Not a sensitive knob"?? is contradicted by Chapter 5. 5.3 uses the same workload (2D, 1 GiB, unit density, 64 threads) and shows a 1.8× penalty on spreading wall time across the Smax range.
+//- "Not a sensitive knob"?? is contradicted by Chapter 5. 5.3 uses the same workload (2D, 1 GiB, unit density, 64 threads) and shows a 1.8× penalty on spreading wall time across the Smax range.
 
-- 3.5 makes an unsupported claim. It says the heuristic "can select a fine-grid size whose FFT costs twenty times what a neighbouring choice would", "as shown above". Nothing above shows this.
-
- 
+//- 3.5 makes an unsupported claim. It says the heuristic "can select a fine-grid size whose FFT costs twenty times what a neighbouring choice would", "as shown above". Nothing above shows this.
 
  
 
-Chapter 4: Analysis of the Upsampling Factor
+ 
 
-- The chapter's goal isn't reached. It sets out to show "how to select σ optimally", but spreading and FFT are validated separately and never combined. There is no total-cost curve, predicted optimum, measured optimum, or comparison with the heuristic, so none of the gains over the heuristic are quantified.
+//Chapter 4: Analysis of the Upsampling Factor
 
-- Eq. 4.1 has no source.
+//- The chapter's goal isn't reached. It sets out to show "how to select σ optimally", but spreading and FFT are validated separately and never combined. There is no total-cost curve, predicted optimum, measured optimum, or comparison with the heuristic, so none of the gains over the heuristic are quantified.
 
-- The FFT validation (Fig. 4.2) has problems:
+//- Eq. 4.1 has no source.
 
-  - The caption says "1 and 16 threads", the legend says "all thr", and the machine has 20 cores / 40 threads.
+//- The FFT validation (Fig. 4.2) has problems:
+
+//  - The caption says "1 and 16 threads", the legend says "all thr", and the machine has 20 cores / 40 threads.
 
   - It plots throughput against N but never tests how cost depends on σ.
 
-  - The sentence in 4.5.1 is unclear ("performs only O(log Ñ) pralelized over multiple threads arithmetic operations, per element").
+//  - The sentence in 4.5.1 is unclear ("performs only O(log Ñ) pralelized over multiple threads arithmetic operations, per element").
 
-- Google Benchmark statement is not correct. It isn't "cycle-accurate", and by default it doesn't report a standard deviation.
+//- Google Benchmark statement is not correct. It isn't "cycle-accurate", and by default it doesn't report a standard deviation.
 
-- Smaller points: "Analytical Measurements" is an odd title for an experimental section, and 4.5.2 contains a broken "Appendix ??".
-
- 
+//a broken "Appendix ??"- Smaller points: "Analytical Measurements" is an odd title for an experimental section, and 4.5.2 contains a broken "Appendix ??".
 
  
 
-Chapter 5: Analysis of the Spreader Parameters (strongest chapter)
+ 
 
-- The hardware doesn't match. Chapters 3 and 5 use 64 threads, and Table 5.1's ratios imply a 48 KiB L1d and a 1.25 MiB L2. That is consistent with an Ice Lake-SP-class part, not the documented Xeon E5-2698 v4, which has 40 threads and a 32 KiB L1d. NUMA and thread pinning are never discussed, and they matter for the memory-contention arguments.
+//Chapter 5: Analysis of the Spreader Parameters (strongest chapter)
 
-- Figs. 5.6 and 5.7 contradict the method. They plot gathering and adding in milliseconds, but 1.3 says these steps can't be timed with a clock. The conversion needs explaining.
+//- The hardware doesn't match. Chapters 3 and 5 use 64 threads, and Table 5.1's ratios imply a 48 KiB L1d and a 1.25 MiB L2. That is consistent with an Ice Lake-SP-class part, not the documented Xeon E5-2698 v4, which has 40 threads and a 32 KiB L1d. NUMA and thread pinning are never discussed, and they matter for the memory-contention arguments.
+
+//- Figs. 5.6 and 5.7 contradict the method. They plot gathering and adding in milliseconds, but 1.3 says these steps can't be timed with a clock. The conversion needs explaining.
 
 - The spreading working set omits padding. The text gives 16·bx·by bytes, but Table 5.1b's ratios look weird. Do they match 16·bx·by?
 

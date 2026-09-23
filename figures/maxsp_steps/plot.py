@@ -23,7 +23,7 @@ Writes two figures next to this script:
                     count per thread approaches one, and time keeps rising
                     while cycles do not.
   maxsp_fbfull.pdf  the cycles gathering consumes, against the stall counters
-  maxsp_addvol.pdf  adding time and the write volume the subgrid model
+  maxsp_addvol.pdf  adding cycles and the write volume the subgrid model
                     predicts, A(S_max) times the number of subproblems, both
                     against S_max. They carry different units and so sit on
                     twin axes; the figure is for whether the two fall together,
@@ -217,11 +217,11 @@ def main():
 
     # --- adding time and the cells it writes, both against S_max -----------
     fig6, ax = plt.subplots(1, 1, figsize=(7.5, 4.4))
-    l1, = ax.plot(x, [float(r["add_ms"]) for r in rows], "-o", lw=1.8, ms=4,
-                  color=ADD, label="adding time")
+    l1, = ax.plot(x, [float(r["add_cycles"]) / 1e9 for r in rows], "-o", lw=1.8,
+                  ms=4, color=ADD, label="adding cycles")
     ax.set_xscale("log")
     ax.set_xlabel(r"$S_{\max}$")
-    ax.set_ylabel("adding time [ms]", color=ADD)
+    ax.set_ylabel(r"adding cycles [$10^9$]", color=ADD)
     ax.tick_params(axis="y", colors=ADD)
     ax.set_ylim(bottom=0)
 
