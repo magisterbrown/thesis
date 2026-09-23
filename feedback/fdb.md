@@ -126,11 +126,11 @@ Below, is the list of comments from my first pass:
 
 //- Figs. 5.6 and 5.7 contradict the method. They plot gathering and adding in milliseconds, but 1.3 says these steps can't be timed with a clock. The conversion needs explaining.
 
-- The spreading working set omits padding. The text gives 16·bx·by bytes, but Table 5.1b's ratios look weird. Do they match 16·bx·by?
+//- The spreading working set omits padding. The text gives 16·bx·by bytes, but Table 5.1b's ratios look weird. Do they match 16·bx·by?
 
-- Load imbalance is asserted, not shown. Per-thread busy time would settle it.
+//- Load imbalance is asserted, not shown. Per-thread busy time would settle it.
 
-- 5.3.1 is mislabelled. It's titled "Older heuristics" but describes the current heuristic, and its claims about scheduling overhead and cache spill have no evidence.
+//- 5.3.1 is mislabelled. It's titled "Older heuristics" but describes the current heuristic, and its claims about scheduling overhead and cache spill have no evidence.
 
  
 

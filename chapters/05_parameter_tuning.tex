@@ -177,36 +177,45 @@ A larger $S_{\max}$ reduces the total number of subproblems, thereby lowering sc
 $S_{\max}$ determines the amount of memory dedicated to subproblem processing. During the gathering step, the algorithm loads this number of points with their coordinates into the memory buffer.
 Finally, $S_{\max}$ fixes the size of the subgrid for each subproblem, through the relations derived in Section~\ref{sec:subgrid_size}: \eqref{eq:subgrid_1d} in one dimension, \eqref{eq:subgrid_2d} in two and \eqref{eq:subgrid_3d} in three. 
 
-Figure~\ref{fig:maxsp_steps} measures the cost of a subproblem across the range, as wall-clock time, on a 2D transform of $1$\,GiB of nonuniform points at unit density, on all threads of the test platform of Section~\ref{sec:platform}. The horizontal axis is $S_{\max}$ on a logarithmic scale, from $10^4$ up to $M/n_{\mathrm{thr}} = 524{,}288$, the value at which each thread receives a single subproblem and beyond which the spreader ignores further increases; the number of subproblems the transform is divided into therefore falls from $3355$ at the left edge to $40$ at the right. The curve is the time the spreading phase takes, that is gathering, spreading and adding together, as measured by FINUFFT's own timer.
+Figure~\ref{fig:maxsp_steps} measures the cost of the spreading phase across the range, as wall-clock time, on a 2D transform of $1$\,GiB of nonuniform points at unit density, on all threads of the test platform of Section~\ref{sec:platform}. The horizontal axis is $S_{\max}$ on a logarithmic scale, from $500$ up to $M/n_{\mathrm{thr}} = 838{,}861$, the value at which each thread receives a single subproblem and beyond which the spreader ignores further increases; the number of subproblems the transform is divided into therefore falls from $67{,}109$ at the left edge to $40$ at the right. The curve is the time the spreading phase takes, that is gathering, spreading and adding together, as measured by FINUFFT's own timer.
 
-The steps themselves are compared in cycles rather than wall-clock time, in Figure~\ref{fig:maxsp_cycles}, because cycles count work actually performed and summed over threads, whereas the wall time of a phase also counts threads that have run out of work and are waiting. Measured that way the two large steps move against each other. Adding falls from $10.0$ to $1.8$ billion cycles, a factor of $5.5$, because fewer and larger subproblems produce less total subgrid volume to write back: the padding of half a kernel width around every subgrid is paid once per subproblem, so its share of the whole shrinks as subproblems grow. Gathering moves the other way, from $7.4$ to $12.2$ billion cycles, but only by a factor of $1.7$, and it stops growing beyond $S_{\max} \approx 10^5$, peaking at $13.3$ billion near $1.6 \times 10^5$. Spreading is the least sensitive of the three, drifting down by about a quarter, from $4.3$ to $3.2$ billion cycles.
+The steps themselves are compared in cycles rather than wall-clock time, in Figure~\ref{fig:maxsp_cycles}, because cycles count the work a thread actually performs, whereas the wall time of the phase also counts threads that have run out of work and are waiting. Measured that way the two large steps move against each other. Adding falls from $15.9$ to $4.0$ billion cycles, a factor of $4$, because fewer and larger subproblems produce less total subgrid volume to write back: the padding of half a kernel width around every subgrid is paid once per subproblem, so its share of the whole shrinks as subproblems grow. Gathering moves the other way. It is flat at $11$--$12$ billion cycles up to $S_{\max} = 2000$ and then climbs steeply, reaching $14.6$ billion at $4000$, $20.9$ billion at $8000$ and $25$--$28$ billion over the rest of the range. The interval over which it climbs is set by the cache: at $32$ bytes per point the staging buffer of \eqref{eq:staging_buffer} holds $4096$ points in a thread's share of the $256$\,KiB second-level cache and $8192$ in a full core's, which is exactly where the rise begins and where it is complete. Spreading is the least sensitive of the three over most of the range, flat at $4.8$ billion cycles up to $S_{\max} = 4000$ and rising to $11.8$ billion only once the subgrid itself outgrows the last-level cache. The two curves cross near $S_{\max} = 2000$: below it adding dominates, above it gathering does.
 
-In wall-clock time the picture is different, and Figure~\ref{fig:maxsp_steps} shows why the choice of $S_{\max}$ still matters. The total time of a subproblem is flat at about $112$\,ms over the first three points, where the falling and rising terms cancel almost exactly, and then climbs steadily to $207$\,ms at the top of the range. The best setting for this transform is therefore at the small end of the range, and the penalty for choosing the largest permissible value is a factor of $1.8$.
+In wall-clock time the picture is simpler, and Figure~\ref{fig:maxsp_steps} shows why the choice of $S_{\max}$ matters. The phase is cheapest at $S_{\max} \approx 2000$, where it takes $363$\,ms, and the rate at which it grows from there is set by the same cache boundary as gathering. While the staging buffer still fits in a thread's share of L2 the curve is almost flat, moving only from $376$ to $389$\,ms between $S_{\max} = 500$ and $4000$. Once the buffer outgrows that share the phase climbs steeply, by $84$\,ms over the single step from $4000$ to $8000$ and reaching $492$\,ms at $10^4$, after which it flattens again into a slow drift, about $524$\,ms near $10^5$, before rising once more to $622$\,ms at the top of the range. The value the library would choose for this transform, $S_{\max} = 10^5$, therefore costs $1.44$ times the best setting, and the largest permissible value costs $1.71$ times it. The two views disagree over the upper half of the range, where the cycle count falls from $42.6$ to $36.6$ billion while the wall time keeps rising. That disagreement is itself the load imbalance: as subproblems grow, the threads that finish early stop competing for memory, so the work that remains is served at a higher bandwidth and costs fewer stalled cycles, while the phase cannot end until the last thread is done. At the very top of the range the imbalance disappears -- every thread has exactly one subproblem -- and the cycle count jumps back to $44.5$ billion, because all $40$ threads now contend for the whole phase and each holds a subgrid of $14.4$\,MB.
 
-The gap between the two views is load imbalance. The three steps together account for about $22$ billion cycles at the bottom of the range and $17$ billion at the top, so the work done actually falls slightly, while the wall time nearly doubles. At the largest subproblem sizes there is barely one subproblem per thread, so the phase ends only when the slowest thread finishes and the rest stand idle; that idle time lengthens the phase without being charged to any step.
 
 \begin{figure}[h]
     \centering
     \begin{subfigure}[b]{0.49\textwidth}
         \centering
-        \includegraphics[width=\textwidth]{figures/maxsp_steps/maxsp_steps.pdf}
-        \caption{Wall-clock time.}
+        \includegraphics[width=\textwidth]{figures/maxsp_steps_xeon/maxsp_xeon_total.pdf}
+        \caption{Wall-clock time of the whole spreading call.}
         \label{fig:maxsp_steps}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.49\textwidth}
         \centering
-        \includegraphics[width=\textwidth]{figures/maxsp_steps/maxsp_cycles.pdf}
-        \caption{Cycles, summed over threads.}
+        \includegraphics[width=\textwidth]{figures/maxsp_steps_xeon/maxsp_xeon_steps_cycles.pdf}
+        \caption{Cycles of each step and of the three together, summed over threads.}
         \label{fig:maxsp_cycles}
     \end{subfigure}
-    \caption{Cost of gathering, spreading and adding against $S_{\max}$, measured as wall-clock time and as cycles.}
+    \caption{Cost of gathering, spreading and adding against $S_{\max}$, measured as wall-clock time and as cycles. Both are read from timers placed inside the parallel region, so the cycles count work performed and exclude the idle time that imbalance creates; the band is the spread over repetitions.}
     \label{fig:maxsp_steps_pair}
 \end{figure}
 
+Figure~\ref{fig:thread_busy_hist} makes the effect visible directly. It reports the busy time of each of the $40$ threads at $S_{\max} = 524{,}288$, the value at which the points are divided into $64$ subproblems. Twenty-four threads receive two of them and sixteen receive one, and the two groups separate cleanly: the busiest thread works for $553$\,ms while the least busy finishes in $351$\,ms, leaving the average thread idle for $18.5\%$ of the phase. The work itself is evenly divided, since every subproblem holds the same number of points, but it cannot be divided evenly among the threads once there are too few subproblems to go round.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/maxsp_imbalance/thread_busy_524288.pdf}
+    \caption{Busy time of each thread at $S_{\max} = 524{,}288$, which divides the points into $64$ subproblems over $40$ threads. Threads that receive two subproblems take roughly $1.4$ times as long as those that receive one, and the phase cannot end before the slowest of them.}
+    \label{fig:thread_busy_hist}
+\end{figure}
+
+
 
 \subsection{Older heuristics}
-The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $N/n_{\text{thr}}$ for 2D and 3D transforms, and to the minimum of $10^4$ and $N/n_{\text{thr}}$ for 1D transforms. These constants are suboptimal: they introduce extra OpenMP scheduling overhead, and for transforms with very low density, the subgrid can end up very large and spill out of cache into main memory.
+The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{thr}}$ in two and three dimensions, and to the minimum of $10^4$ and $M/n_{\text{thr}}$ in one. These constants are suboptimal, because a fixed number of points might not land on the balance point: that point is where the falling cost of adding meets the rising cost of gathering. The sweep of the previous section shows how far the fixed value can sit from it. For the transform measured there the two steps cross at $S_{\max} \approx 2000$, where the phase costs $363$\,ms, while the constant the heuristic selects, $10^5$, costs about $524$\,ms -- a factor of $1.44$ for a value that is fifty times too large. 
 
 
 \subsection{Effect on gathering.}
@@ -216,25 +225,13 @@ set of point coordinates and strengths for the current subproblem. Their combine
   B(S_{\max}) \;=\; S_{\max}\,\cdot\,\texttt{sizeof(FLT)}\,\cdot\,(d+2),
   \label{eq:staging_buffer}
 \end{equation}
-with $d$ words per point for the coordinates and two for the complex strength.  While $B(S_{\max})$ fits in a thread's share of cache, the
-lines written by one subproblem are still owned when the next one overwrites them, and the
-stores cost nothing beyond the cache hit. Once $B(S_{\max})$ exceeds that share, every
-written line, with points, must first be fetched for ownership and later written back.
-CPU uses line-fill buffers that bring back cache line from lower hierarchy levels. When pool of buffers is exhausted
-gathering cycles begin to stall.
-Figure~\ref{fig:fb_full} shows the mechanism directly: the
-\texttt{l1d\_pend\_miss.fb\_full} counter, which records the cycles a demand request was
-blocked because no fill buffer was available, rises by a third across the range and
-climbs fastest over the same interval in which gathering does, before flattening once
-the buffer is far larger than the cache can hold. The
-\texttt{cycle\_activity.stalls\_l3\_miss} counter, which records cycles stalled on a
-demand load that missed the last-level cache, grows over that same interval, by a
-fifth, and flattens at the same point. Both counters therefore rise and slow down gathering.
+with $d$ words per point for the coordinates and two for the complex strength. While $B(S_{\max})$ fits in a thread's share of cache, the lines written by one subproblem are still owned when the next one overwrites them, and the stores cost nothing beyond the cache hit. Once $B(S_{\max})$ exceeds that share, every written line, with the points it holds, must first be fetched from a lower level of the hierarchy and later written back, and the thread stalls while it waits.
+Figure~\ref{fig:fb_full} shows the mechanism directly, with $S_{\max}$ swept over a range wide enough to contain the threshold. In two dimensions at double precision a point occupies $32$ bytes, so the buffer holds $4096$ points in a thread's share of the $256$\,KiB second-level cache and $8192$ in a whole core's. Below that range gathering is cheap and flat, $10.9$ to $12.4$ billion cycles from $S_{\max} = 500$ to $2000$; across it the cost roughly doubles, to $14.6$ billion at $4000$ and $20.9$ billion at $8000$; above it the curve flattens again between $25$ and $28$ billion. The \texttt{cycle\_activity.stalls\_l2\_miss} counter, which records execution stalls while a demand load that missed the second-level cache is outstanding, accounts for nearly all of that: it follows the same curve one step above it, from $12.0$ to $30.6$ billion cycles, so gathering is not doing more work at large $S_{\max}$ but waiting more. The \texttt{l1d\_pend\_miss.fb\_full} counter, which records the cycles a demand request was blocked because no line-fill buffer was available, rises over the same interval, from $0.34$ to $0.77$ billion cycles, and then flattens; the pool of fill buffers does therefore run dry once the buffer leaves the cache, but at roughly $3\%$ of gathering's cycles it is a symptom of the traffic rather than the bulk of the cost.
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=\textwidth]{figures/maxsp_steps/maxsp_fbfull.pdf}
-    \caption{Cycles consumed by gathering, the fill-buffer stalls and the L3-miss stalls attributed to it, against $S_{\max}$, on 64 threads.}
+    \includegraphics[width=\textwidth]{figures/maxsp_fbfull_xeon/maxsp_fbfull_xeon.pdf}
+    \caption{Cycles consumed by gathering, and the cycles stalled on an L2 miss and blocked for want of a line-fill buffer attributed to it, against $S_{\max}$. The dashed lines mark where the staging buffer fills a thread's share of L2 and a whole core's.}
     \label{fig:fb_full}
 \end{figure}
 \subsection{Effect on adding.}
