@@ -129,7 +129,7 @@ def main():
                             rotation=90, va="top", ha="right", color="grey", fontsize=8)
 
             ax.set_title(f"dim={dim}, prec={PREC_NAME.get(prec, prec)}")
-            ax.set_xlabel("N (per-axis size)")
+            ax.set_xlabel(r"$\sigma N$ (per-axis size of the fine grid)")
             ax.set_ylabel("throughput (Mpoint/s)")
             ax.grid(True, which="both", linestyle=":", linewidth=0.5)
             # One legend for the whole figure: every panel draws the same
