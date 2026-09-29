@@ -55,7 +55,7 @@ Figure~\ref{fig:gp_histogram} shows the distribution of times across all complet
         \texttt{spread\_max\_sp\_size} ($S_{\max}$) & $10^5$ & 5085 \\
         \texttt{spread\_sort} & 1 (on) & 1 (on) \\
         \texttt{upsampfac} & 1.25 & 1.25 \\
-        \texttt{spread\_nthr\_atomic} & atomic update & atomic update \\
+        \texttt{spread\_nthr\_atomic} & $10$ & $1$ \\
         $b_x \times b_y$ & $16 \times 4$ & $24 \times 71$ \\
         \hline
     \end{tabular}
@@ -79,7 +79,36 @@ To quantify the relative contribution of each parameter, functional ANOVA (fANOV
     \label{fig:importance}
 \end{figure}
 
-The dominance of \texttt{spread\_sort} is the least surprising of these results: sorting the nonuniform points by spatial location is what keeps each thread's working set localised, and at this size the unsorted alternative destroys that locality completely. Its share therefore reflects the cost of getting a binary choice wrong rather than headroom the default leaves on the table, since FINUFFT's own heuristic already enables sorting for inputs of this shape. The interesting result is the second panel. \texttt{upsampfac} takes $62.6\%$ of the remaining variance. That it dominates while the best configuration nonetheless agrees with the default value is not a contradiction: $\sigma$ sets the size of the fine grid and hence the whole cost of the FFT, so moving it away from a good value is expensive in a way no amount of spreader tuning can recover, and the score measures that sensitivity rather than any headroom the default leaves. Chapter~\ref{ch:sigma_selection} analyzes it in depth. The two bin dimensions together account for a further $29.5\%$, which Chapter~\ref{ch:parameter_tuning} traces to the cache behaviour of the sort and of the spreading and adding steps downstream of it. \texttt{spread\_max\_sp\_size} ($S_{\max}$), by contrast, contributes only $2.5\%$ here, which is a stronger statement than it appears: the spreader gives each thread one subproblem and subdivides further only when the parameter falls below $M/n_{\mathrm{thr}}$, so values above that bound are indistinguishable from it and the search covered the whole of the range in which the parameter can act at all. That low score measures a share of variance rather than an absence of effect: $\sigma$ sets the size of the whole FFT grid and can multiply the total time several-fold. In absolute terms the subproblem size is far from negligible, and Chapter~\ref{ch:parameter_tuning} shows that it moves the spreading phase of this same transform by a factor of $1.85$, also Chapter~\ref{ch:parameter_tuning} shows that this is not true at every density and thread count, which is why it still merits a dedicated treatment.
+The dominance of \texttt{spread\_sort} is the least surprising of these results: sorting the nonuniform points by spatial location is what keeps each thread's working set localised, and at this size the unsorted alternative destroys that locality completely. Its share therefore reflects the cost of getting a binary choice wrong rather than headroom the default leaves on the table, since FINUFFT's own heuristic already enables sorting for inputs of this shape. The interesting result is the second panel. \texttt{upsampfac} takes $62.6\%$ of the remaining variance. That it dominates while the best configuration nonetheless agrees with the default value is not a contradiction: $\sigma$ sets the size of the fine grid and hence the whole cost of the FFT, so moving it away from a good value is expensive in a way no amount of spreader tuning can recover, and the score measures that sensitivity rather than any headroom the default leaves. Chapter~\ref{ch:sigma_selection} analyzes it in depth. The two bin dimensions together account for a further $29.5\%$, which Chapter~\ref{ch:parameter_tuning} traces to the cache behaviour of the sort and of the spreading and adding steps downstream of it. \texttt{spread\_max\_sp\_size} ($S_{\max}$), by contrast, contributes only $2.5\%$ here, which is a stronger statement than it appears: the spreader gives each thread one subproblem and subdivides further only when the parameter falls below $M/n_{\mathrm{thr}}$, so values above that bound are indistinguishable from it and the search covered the whole of the range in which the parameter can act at all. That low score measures a share of variance rather than an absence of effect: $\sigma$ sets the size of the whole FFT grid and can multiply the total time several-fold. In absolute terms the subproblem size is far from negligible, and Chapter~\ref{ch:parameter_tuning} shows that it moves the spreading phase of this same transform by a factor of $1.71$ across the range it can take, also Chapter~\ref{ch:parameter_tuning} shows that this is not true at every density and thread count, which is why it still merits a dedicated treatment.
+
+\section{An Alternative Search with OpenTuner}
+\label{sec:opentuner}
+
+A Gaussian-process sampler is not the only way to search this space, and it is worth asking how much of the result depends on it. The same six parameters were therefore searched a second time with OpenTuner~\cite{ansel2014opentuner}, a general framework for tuning program parameters by measurement. Where Optuna fits one surrogate model and proposes the point that model considers most promising, OpenTuner runs an ensemble of search techniques at once -- differential evolution, several greedy mutation schemes and a Nelder--Mead simplex among them -- and lets a bandit allocate trials to whichever technique is currently producing improvements. It builds no model of the space, so it gives no importance scores, but it is indifferent to the shape of the objective.
+
+The objective and the search space were the same as in Section~\ref{sec:gp_sensitivity}: the wall time of \texttt{setpts} plus \texttt{execute} for the reference transform, over $S_{\max}$ from $10^3$ to $M/n_{\mathrm{thr}}$, sorting on or off, $\sigma$ anywhere in $[1.25, 2.00]$, the atomic threshold at $1$ or $100$, and the two bin dimensions from $4$ to $8192$ and $1$ to $2048$. Each trial ran two repetitions and was abandoned after $20$\,s, which is an order of magnitude above the default configuration's time and so only ever truncates configurations that have already lost. The search was stopped after $147$ trials, of which $44$ were unsorted configurations that hit the cap.
+
+Table~\ref{tab:opentuner_best} gives the configuration it found. Measured three times against the defaults on the same node, it completes the transform in $1.732$\,s against $2.142$\,s, a reduction of $19.1\%$ or a speedup of $1.24$. The margin is larger than the one reported in Section~\ref{sec:gp_sensitivity}, but the two are not directly comparable: that search ran on a different node, and this one searches a range of $S_{\max}$ whose lower end the earlier search left unexplored.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{lll}
+        \hline
+        \textbf{Parameter} & \textbf{Default} & \textbf{Best value found} \\
+        \hline
+        \texttt{spread\_max\_sp\_size} ($S_{\max}$) & $10^5$ & $1061$ \\
+        \texttt{spread\_sort} & 1 (on) & 1 (on) \\
+        \texttt{upsampfac} & 1.25 & 1.284 \\
+        \texttt{spread\_nthr\_atomic} & $10$ & $1$ \\
+        $b_x \times b_y$ & $16 \times 4$ & $30 \times 121$ \\
+        \hline
+    \end{tabular}
+    \caption{Parameter values of the best configuration found by OpenTuner on the reference workload, against the values the library uses for this input.}
+    \label{tab:opentuner_best}
+\end{table}
+
+What the second search adds is not the margin but the agreement. It reaches the same region as the analyses that follow, by a different route and without any model of the space: sorting on, the atomic threshold at its lower value, $\sigma$ within a few percent of its default, a subproblem size two orders of magnitude below the shipped constant, and bins far taller along the slow axis than the shipped $16 \times 4$. The best twenty trials all lie in that region and differ mainly in $b_x$, which varies between $20$ and $41$ with no effect beyond the noise, so the optimum is a broad basin rather than an isolated point. Two limitations temper the result. The search returns a configuration and no explanation of it, which is the gap the remaining chapters fill; and its best $S_{\max}$ sits near the lower bound of the searched range, so the true optimum may lie below it -- Chapter~\ref{ch:parameter_tuning} sweeps the parameter directly and places it near $2000$ for this transform.
+
 
 \section{Implications for the Remainder of This Thesis}
 

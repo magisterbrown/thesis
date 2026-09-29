@@ -39,6 +39,15 @@ it implies, and it is this trade-off that the rest of the chapter quantifies.
     \label{fig:sigma_tradeoff}
 \end{figure}
 
+\section{The Range of $\sigma$}
+\label{sec:sigma_range}
+
+Before asking which value of $\sigma$ is best, it is worth establishing which values are admissible at all. The aliasing law behind \eqref{eq:kernel_width} sets no lower bound above one: the error falls as $e^{-(w-1)\pi\sqrt{1-1/\sigma}}$, so as $\sigma$ approaches one the exponent vanishes and the width needed for a given tolerance grows without limit. What makes small $\sigma$ inadmissible in practice is that width. FINUFFT compiles its spreading kernels only up to $w = 16$ in double precision and $w = 12$ in single, and refuses a plan whose requested tolerance would need more, so each tolerance has a $\sigma$ below which the transform cannot be performed at all. Inverting \eqref{eq:kernel_width} at $w = 16$ in two dimensions gives $\sigma \ge 1.08$ at $\varepsilon = 10^{-6}$, $\sigma \ge 1.20$ at $10^{-9}$ and $\sigma \ge 1.45$ at $10^{-12}$: the tighter the tolerance, the narrower the admissible range becomes from below. The library adds two guards of its own, rejecting $\sigma \le 1$ outright and capping the width at $8$ for single precision below $\sigma = 1.4$, where the dynamic range of the kernel coefficients would otherwise cost more accuracy than the wider kernel gains.
+
+The upper end is bounded by economics rather than by accuracy. Raising $\sigma$ enlarges the fine grid as $\sigma^d$ while the width it saves falls only with $\sqrt{1-1/\sigma}$, which flattens quickly: in two dimensions at $\varepsilon = 10^{-6}$ the width is $7$ at $\sigma = 2$ and still $7$ at $\sigma = 2.5$, dropping to $6$ only at $\sigma = 3$. Going from $2$ to $2.5$ therefore buys nothing at all while enlarging the grid by half, and going from $2$ to $3$ trades a $27\%$ saving in spreading work against a grid $2.25$ times larger. Values above two pay only in two situations: when the tolerance is tight enough that $\sigma = 2$ would itself exceed the compiled width, which in two dimensions happens below about $10^{-15}$; and when the point density is high enough that spreading dominates the transform so completely that even a small reduction in $w^d$ outweighs the larger FFT.
+
+The interval studied in this chapter, $[1.25, 2.00]$, sits inside both bounds for every tolerance considered here. It is also the interval the library's own heuristic ranges over in the version measured, which is what makes the comparison in the rest of the chapter a fair one.
+
 \section{Current Heuristic for $\sigma$ Selection}
 The current FINUFFT heuristic for $\sigma$ selection is a simple lookup: it returns one of only two possible values, $\sigma \in \{1.25, 2.00\}$. By default it returns $1.25$, but switches to $2.00$ when the point density $\rho = M/N$ exceeds a fixed threshold, or when the requested tolerance $\varepsilon$ is too tight for $\sigma = 1.25$ to reach. All upsampling factors in between are never considered, even though the true optimal $\sigma$ for a given problem often lies in the interior of $[1.25, 2.00]$.
 
@@ -82,7 +91,10 @@ First, for small transforms the throughput increases with grid size, because the
 per-call overhead is amortised over an increasing number of points. For larger transforms
 the single-threaded throughput follows the $1/\log_2 \tilde{N}$ trend. The throughput of a
 transform that uses all threads on the machine, however, keeps increasing as long as the
-whole transform fits in the L3 cache.
+grid it works on fits in the L3 cache: the array is complex, at $16$ bytes per cell in
+double precision, so the condition is $16\,\tilde{N} \le$ L3, which on the platform of
+Section~\ref{sec:platform} is $16\,\tilde{N} \le 50$\,MiB, that is $\tilde{N} \le 3.3$
+million cells. The vertical line in each panel marks where that bound is crossed.
 DUCC implements the FFT with the mixed-radix Cooley--Tukey algorithm inherited from FFTPACK
 (Section~\ref{sec:related_ducc}). Each of its $\mathcal{O}(\log \tilde{N})$ passes performs only a
 few arithmetic operations per element, whether the transform runs on one thread or many, so it is
@@ -107,10 +119,7 @@ To validate the $w^d$ scaling predicted by the model, spreading time was measure
 
 The upsampling factor sets two costs that move in opposite directions: raising
 $\sigma$ enlarges the FFT grid while relaxing the accuracy demanded of the
-spreading kernel, so the optimum generally lies in the interior of
-$[1.25, 2.00]$ rather than at either end. The current heuristic considers only
-the two endpoints, and so cannot reach that interior optimum except by
-coincidence.
+spreading kernel.
 
 The two cost models behave very differently under measurement. The spreading
 model is accurate: across one, two and three dimensions the measured time steps

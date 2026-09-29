@@ -21,7 +21,7 @@ Lacking any basis on which to prefer one value to another, a user tunes by tryin
 This thesis addresses the following questions.
 
 \begin{enumerate}
-    \item \textbf{Which configuration parameters affect performance, and how much?} FINUFFT exposes a dozen options and hides several more constants in its source. Chapter~\ref{ch:parameter_importance} establishes where the time is spent across the stages of a transform, and ranks the parameters by their contribution to the variance in execution time over a joint search of the configuration space.
+    \item \textbf{Which configuration parameters affect performance?} FINUFFT exposes a dozen options, and hides several further constants in its source. Chapter~\ref{ch:parameter_importance} establishes where the time of a transform is spent across its stages, and ranks the parameters by how much of the variance in execution time each accounts for over a joint search of the configuration space.
 
     \item \textbf{Through which mechanism does each parameter act, and where do the resulting trade-offs balance?} Rather than treating the transform as a single measurement, Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning} separate it into sorting, gathering, spreading, adding and the FFT, and attribute the effect of each parameter to the steps it speeds up and the steps it slows down. Because those effects oppose one another, each parameter has an interior optimum, and the question is what its position depends on: point density, dimension, requested tolerance, thread count, and the sizes of the levels of the cache hierarchy.
 
@@ -34,7 +34,7 @@ This thesis addresses the following questions.
 The main contributions of this thesis are the following.
 
 \begin{itemize}
-    \item \textbf{A per-stage measurement of the spreading phase.} The three stages a subproblem passes through -- gathering, kernel evaluation and adding -- run inside a single parallel region and cannot be timed with a clock. They are separated here by attributing sampled processor cycles to the functions that implement them, with hardware performance counters recorded alongside, so that the effect of every parameter can be traced to the stage it acts on and to the cause: cache capacity, memory contention between threads, or load imbalance.
+    \item \textbf{A per-stage measurement of the spreading phase.} The three stages a subproblem passes through -- gathering, kernel evaluation and adding -- are executed concurrently by all threads. They are compared here by attributing sampled processor cycles to the functions that implement them, with hardware performance counters recorded alongside, so that the effect of every parameter can be traced both to the stage it acts on and to its cause: cache capacity, memory contention between threads, or load imbalance.
 
     \item \textbf{A ranking of FINUFFT's configuration parameters.} A Gaussian-process search over six parameters of a one-gibibyte two-dimensional transform, including two that the library does not expose, attributes the variance in execution time to each of them (Chapter~\ref{ch:parameter_importance}). Sorting dominates, and once it is enabled the upsampling factor and the sort bin dimensions account for most of what remains, while the maximum subproblem size accounts for little of the variance on this workload, despite a substantial absolute effect on the spreading phase. The best configuration found is $5.2\%$ faster than the library defaults.
 

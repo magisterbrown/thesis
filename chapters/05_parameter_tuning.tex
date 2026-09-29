@@ -181,7 +181,7 @@ Figure~\ref{fig:maxsp_steps} measures the cost of the spreading phase across the
 
 The steps themselves are compared in cycles rather than wall-clock time, in Figure~\ref{fig:maxsp_cycles}, because cycles count the work a thread actually performs, whereas the wall time of the phase also counts threads that have run out of work and are waiting. Measured that way the two large steps move against each other. Adding falls from $15.9$ to $4.0$ billion cycles, a factor of $4$, because fewer and larger subproblems produce less total subgrid volume to write back: the padding of half a kernel width around every subgrid is paid once per subproblem, so its share of the whole shrinks as subproblems grow. Gathering moves the other way. It is flat at $11$--$12$ billion cycles up to $S_{\max} = 2000$ and then climbs steeply, reaching $14.6$ billion at $4000$, $20.9$ billion at $8000$ and $25$--$28$ billion over the rest of the range. The interval over which it climbs is set by the cache: at $32$ bytes per point the staging buffer of \eqref{eq:staging_buffer} holds $4096$ points in a thread's share of the $256$\,KiB second-level cache and $8192$ in a full core's, which is exactly where the rise begins and where it is complete. Spreading is the least sensitive of the three over most of the range, flat at $4.8$ billion cycles up to $S_{\max} = 4000$ and rising to $11.8$ billion only once the subgrid itself outgrows the last-level cache. The two curves cross near $S_{\max} = 2000$: below it adding dominates, above it gathering does.
 
-In wall-clock time the picture is simpler, and Figure~\ref{fig:maxsp_steps} shows why the choice of $S_{\max}$ matters. The phase is cheapest at $S_{\max} \approx 2000$, where it takes $363$\,ms, and the rate at which it grows from there is set by the same cache boundary as gathering. While the staging buffer still fits in a thread's share of L2 the curve is almost flat, moving only from $376$ to $389$\,ms between $S_{\max} = 500$ and $4000$. Once the buffer outgrows that share the phase climbs steeply, by $84$\,ms over the single step from $4000$ to $8000$ and reaching $492$\,ms at $10^4$, after which it flattens again into a slow drift, about $524$\,ms near $10^5$, before rising once more to $622$\,ms at the top of the range. The value the library would choose for this transform, $S_{\max} = 10^5$, therefore costs $1.44$ times the best setting, and the largest permissible value costs $1.71$ times it. The two views disagree over the upper half of the range, where the cycle count falls from $42.6$ to $36.6$ billion while the wall time keeps rising. That disagreement is itself the load imbalance: as subproblems grow, the threads that finish early stop competing for memory, so the work that remains is served at a higher bandwidth and costs fewer stalled cycles, while the phase cannot end until the last thread is done. At the very top of the range the imbalance disappears -- every thread has exactly one subproblem -- and the cycle count jumps back to $44.5$ billion, because all $40$ threads now contend for the whole phase and each holds a subgrid of $14.4$\,MB.
+In wall-clock time the picture is simpler, and Figure~\ref{fig:maxsp_steps} shows why the choice of $S_{\max}$ matters. The phase is cheapest at $S_{\max} \approx 2000$, where it takes $363$\,ms, and the rate at which it grows from there is set by the same cache boundary as gathering. While the staging buffer still fits in a thread's share of L2 the curve is almost flat, moving only from $376$ to $389$\,ms between $S_{\max} = 500$ and $4000$. Once the buffer outgrows that share the phase climbs steeply, by $84$\,ms over the single step from $4000$ to $8000$ and reaching $492$\,ms at $10^4$, after which it flattens again into a slow drift, about $524$\,ms near $10^5$, before rising once more to $622$\,ms at the top of the range. The cheapest setting measured, $S_{\max} \approx 2000$ at $364$\,ms, is therefore the one against which the others are compared: the value the library would choose for this transform, $S_{\max} = 10^5$, costs $1.44$ times as much, and the largest value the spreader accepts, $S_{\max} = M/n_{\mathrm{thr}}$, costs $1.71$ times as much. That last ratio is also the full span of the curve, since the two settings are its minimum and its maximum. The two views disagree over the upper half of the range, where the cycle count falls from $42.6$ to $36.6$ billion while the wall time keeps rising. That disagreement is itself the load imbalance: as subproblems grow, the threads that finish early stop competing for memory, so the work that remains is served at a higher bandwidth and costs fewer stalled cycles, while the phase cannot end until the last thread is done. At the very top of the range the imbalance disappears -- every thread has exactly one subproblem -- and the cycle count jumps back to $44.5$ billion, because all $40$ threads now contend for the whole phase and each holds a subgrid of $14.4$\,MB.
 
 
 \begin{figure}[h]
@@ -231,7 +231,7 @@ Figure~\ref{fig:fb_full} shows the mechanism directly, with $S_{\max}$ swept ove
 \begin{figure}[h]
     \centering
     \includegraphics[width=\textwidth]{figures/maxsp_fbfull_xeon/maxsp_fbfull_xeon.pdf}
-    \caption{Cycles consumed by gathering, and the cycles stalled on an L2 miss and blocked for want of a line-fill buffer attributed to it, against $S_{\max}$. The dashed lines mark where the staging buffer fills a thread's share of L2 and a whole core's.}
+    \caption{Cycles attributed to gathering against $S_{\max}$: on the left the cycles it consumes and those it spends stalled on an L2 miss, on the right the cycles blocked for want of a line-fill buffer, which are two orders of magnitude fewer and so carry their own panel. The dashed line marks where the staging buffer fills a thread's share of L2.}
     \label{fig:fb_full}
 \end{figure}
 \subsection{Effect on adding.}
@@ -255,6 +255,7 @@ predicted by the number of cells written.
 \end{figure}
 
 \subsection{Choosing $S_{\max}$}
+\label{sec:cache_aware_subproblem}
 
 
 Transform density, the number of nonuniform points per grid cell, determines the balance
@@ -278,13 +279,48 @@ Figure~\ref{fig:smax_sweep_all} in Appendix~\ref{app:maxsp_sweeps}.
 \end{figure}
 
 
+\section{Atomic Updates against a Critical Section}
+\label{sec:atomic_vs_critical}
+
+The adding step is the only place where threads write to memory they share, so it has to be synchronised. FINUFFT offers two ways of doing it and chooses between them with \texttt{spread\_nthr\_atomic}: when the thread count exceeds that threshold each cell is accumulated with an atomic compare-and-swap, and otherwise the whole of \texttt{add\_wrapped\_subgrid} is wrapped in an OpenMP critical section. The two fail in opposite ways. A critical section admits one thread at a time, so its cost grows with the number of threads waiting behind it and with the number of times the step is entered, which is the number of subproblems. Atomic updates let every thread proceed and pay instead on each cell written, through the read-modify-write cycle and through the retries that follow a collision, so their cost is paid whether or not any other thread is contending.
+
+Table~\ref{tab:sync_grid} measures both. Each entry is the throughput of the transform with the critical section divided by its time with atomics, so a value above one means atomics are faster and a value below one means the critical section is. The transform is the reference one at unit density, $M = 2^{23}$ points on a $2896^2$ grid at $\varepsilon = 10^{-6}$, with every other option left at its default; each entry is the mean of three repetitions.
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|r|rrrrrrrrr|}
+        \hline
+        & \multicolumn{9}{c|}{\textbf{threads}} \\
+        $S_{\max}$ & 1 & 2 & 4 & 8 & 10 & 16 & 20 & 32 & 40 \\
+        \hline
+        $200$ & 0.96 & 0.59 & 0.66 & 0.80 & 0.90 & 1.11 & 1.25 & 1.30 & 1.33 \\
+        $500$ & 1.00 & 0.61 & 0.68 & 0.80 & 0.86 & 1.06 & 1.14 & 1.18 & 1.22 \\
+        $1{,}000$ & 1.03 & 0.61 & 0.69 & 0.74 & 0.80 & 0.99 & 1.07 & 1.15 & 1.19 \\
+        $2{,}000$ & 1.02 & 0.61 & 0.66 & 0.74 & 0.80 & 0.99 & 1.07 & 1.16 & 1.24 \\
+        $5{,}000$ & 1.00 & 0.64 & 0.68 & 0.74 & 0.79 & 0.98 & 1.07 & 1.20 & 1.24 \\
+        $10{,}000$ & 0.99 & 0.71 & 0.76 & 0.80 & 0.82 & 0.98 & 1.08 & 1.11 & 1.12 \\
+        $20{,}000$ & 1.00 & 0.81 & 0.82 & 0.86 & 0.87 & 1.00 & 1.01 & 1.05 & 1.04 \\
+        $50{,}000$ & 1.01 & 0.87 & 0.89 & 0.93 & 0.92 & 0.99 & 0.99 & 1.00 & 1.01 \\
+        $100{,}000$ & 1.01 & 0.89 & 0.91 & 0.94 & 0.95 & 1.00 & 0.98 & 0.99 & 1.01 \\
+        $209{,}715$ & 0.98 & 0.91 & 0.92 & 0.94 & 0.96 & 0.99 & 0.97 & 1.00 & 1.00 \\
+        \hline
+    \end{tabular}
+    \caption{Time with a critical section divided by time with atomic updates, against $S_{\max}$ and thread count, for a 2D type-1 transform at unit density. Values above one mean atomic updates are faster; values below one mean the critical section is.}
+    \label{tab:sync_grid}
+\end{table}
+
+The table splits along the thread count. Below about ten threads the critical section is the better choice, and by a wide margin: at two and four threads atomic updates cost between $45$ and $70\%$ more, because there are too few threads for the lock to be contended while the compare-and-swap loop pays its cost on every cell regardless. Above that the ordering reverses, and by forty threads atomics are ahead by up to a third, because the serialisation the critical section imposes now holds thirty-nine threads idle while one writes. The single-thread column is $1.00$ throughout by construction: the library compares the thread count with the threshold strictly, so one thread always takes the critical path whichever value is set.
+
+The size of the effect, though not its direction, is set by $S_{\max}$. Smaller subproblems mean more of them, and the adding step is entered once per subproblem: at $S_{\max} = 200$ the transform is divided into $41{,}944$ subproblems and the choice is worth a third of the run time at forty threads, while at the library default of $10^5$ there are only $84$ and every entry in the row lies within a few percent of one. Contention is what separates the two, and contention is what many small subproblems produce. This is also why the parameter looked unimportant in the search of Chapter~\ref{ch:parameter_importance}, which left $S_{\max}$ near its default for most trials, and why it cannot be ignored once $S_{\max}$ is tuned: the best subproblem size for this transform lies between $10^3$ and $10^4$, which is precisely the range in which the synchronisation choice is worth tens of percent.
+
+
 \section{Binsize}
 
 Before spreading, FINUFFT sorts all points into bins with an incomplete histogram sort. Sorting is incomplete in the sense that points are grouped into bins but left in arbitrary order within a bin, which is enough to give the spreader most of the cache locality of a full sort at a fraction of its cost: the histogram sort runs in $O(n)$ time and $O(n_{\mathrm{bins}})$ space, against $O(n \log n)$ for a comparison sort. Figure~\ref{fig:binsort_locality} shows three levels of sorting applied to the same point set -- none at all, coarse bins and FINUFFT's default bins -- with each point coloured by its position in the array the spreader then reads.
 
 By default, FINUFFT uses boxes of $16$ grid points along the fast $x$ axis and, in two or three dimensions, $4$ points along the slower $y$ and $z$ axes. These sizes are fixed in the library, but nothing about the algorithm requires them, and the rest of this section measures what they cost.
 
-The sort itself makes two passes over the points: the first counts how many fall into each bin, and the second writes each point's index into the slot its bin has been given. Nothing else is touched apart from an array of $n_{\mathrm{bins}}$ counters held privately by each thread, so the cost is governed by whether that array stays in cache rather than by how many points are being sorted. Table~\ref{tab:binsort_cost} shows the consequence: sorting reaches its fastest, about $5.7$ Gcycles per transform, once the counter array falls to the size of the L1 data cache, which happens at a bin of $96\times24$, and coarser bins bring no further gain. The default $16\times4$ leaves $526{,}000$ bins and a $2$\,MB counter array per thread, and pays $21.2$ Gcycles for it, nearly four times the floor.
+The sort itself makes two passes over the points: the first counts how many fall into each bin, and the second writes each point's index into the slot its bin has been given. Nothing else is touched apart from an array of $n_{\mathrm{bins}}$ counters held privately by each thread, so the cost is governed by whether that array stays in cache rather than by how many points are being sorted. Table~\ref{tab:binsort_cost} shows the consequence: sorting reaches its fastest, about $4.5$ Gcycles per transform, once the counter array has fallen well inside the L1 data cache, which happens at a bin of $384\times96$, and coarser bins bring no further gain. The array first fits at $128\times32$, but sorting still pays $6.4$ Gcycles there, so the approach to the floor is gradual rather than sharp. The default $16\times4$ leaves $526{,}000$ bins and a $2.1$\,MB counter array per thread, and pays $26.5$ Gcycles for it, nearly six times the floor.
 
 \begin{figure}[h]
     \centering
@@ -294,11 +330,11 @@ The sort itself makes two passes over the points: the first counts how many fall
 \end{figure}
 
 
-Bin size does not only affect sorting, however -- it also reaches the spreading and adding steps downstream. Because points keep an arbitrary order inside a bin, a subproblem's writes are scattered over the whole grid region the bin covers, so the working set spreading holds at any moment is the subgrid those points are written into: the region the bin covers, enlarged by half a kernel width on each side so that a point at the edge can deposit its full $w^d$ neighbourhood, which is $16\,(b_x + w)(b_y + w)$ bytes at one complex double per cell. The region is written repeatedly while a bin is being consumed, so what matters is whether it fits in the $48$\,KB L1 data cache of a core rather than in L2. Table~\ref{tab:spread_l2} shows the two regimes. While the padded bin stays inside L1d, spreading is flat at $3.1$--$3.2$ Gcycles and its L1 line fills sit at a floor of about $0.035\times10^9$, unchanged over a sixtyfold range of bin volume. Once the region no longer fits, every write starts pulling a line and the fills climb from $0.041\times10^9$ at the default $16\times4$ to $0.66\times10^9$. Up to $384\times96$ the growth is entirely L1: the L1 fills rise by $0.58\times10^9$ while the L2 fills stay at their own floor near $0.03\times10^9$, and spreading gains only $0.94$ Gcycles, about $1.6$ per additional fill, because each miss is served by L2 and never reaches memory. Beyond that the L1 fills saturate.  Over the last three rows the L2 fills rise fifteenfold to $0.50\times10^9$ and spreading jumps from $4.1$ to $16.9$ Gcycles, some $28$ cycles per additional L2 miss. The first regime is therefore mild and the second is not: an L1 miss costs a few cycles, an L2 miss costs an order of magnitude more, and a bin large enough to overflow both is penalised by each in succession.
+Bin size does not only affect sorting, however; it also reaches the spreading and adding steps downstream. Because points keep an arbitrary order inside a bin, a subproblem's writes are scattered over the whole grid region the bin covers, so the working set spreading holds at any moment is the subgrid those points are written into: the region the bin covers, enlarged by half a kernel width on each side so that a point at the edge can deposit its full $w^d$ neighbourhood, which is $16\,(b_x + w)(b_y + w)$ bytes at one complex double per cell. The region is written repeatedly while a bin is being consumed, so what matters is whether it fits in the core local cache. Table~\ref{tab:spread_l2} shows the performance change. While the padded bin stays inside L1d, spreading is flat at $3.7$--$4.1$ Gcycles and its L1 line fills sit at a floor between $0.03$ and $0.09\times10^9$, unchanged over an eighteenfold range of padded bin area. Once the region no longer fits, every write starts pulling a line and the fills climb from $0.031\times10^9$ at the default $16\times4$ to $0.69\times10^9$. Over $96\times24$ and $128\times32$ the growth is entirely L1: the L1 fills rise by $0.35\times10^9$ while the L2 fills stay at their own floor near $0.035\times10^9$, and spreading gains only $0.47$ Gcycles, about $1.4$ per additional fill, because each miss is served by L2 and never reaches memory. From $192\times48$ the padded bin exceeds L2 as well. The L2 fills then rise eighteenfold to $0.63\times10^9$ and spreading climbs from $4.5$ to $55.6$ Gcycles. The first regime is therefore mild and the second is not: an L1 miss costs a few cycles, an L2 miss costs an order of magnitude more, and a bin large enough to overflow both is penalised by each in succession. The second regime is not uniform either. Between $256\times64$ and $512\times128$ each additional L2 fill costs under $5$ cycles, whereas over the last two rows spreading more than quintuples for a further $0.13\times10^9$ fills alone, so at the top of the range its cost is no longer explained by L2 traffic by itself.
 
 In terms of the Roofline model (Section~\ref{sec:related_perf}), spreading is compute-bound while the padded bin fits in L1d: its arithmetic per point is fixed by the kernel width, and its cost is flat regardless of bin size. A larger bin does not change that arithmetic, but it moves the data the arithmetic works on down the hierarchy, so the step falls first under the roof set by L2 bandwidth and then under the one set by memory. The practical consequence is that bin area should fit into some level of cache hierarchy to preserve memory locality.
 
-Finally, bin size sets the size of the subgrids, through the formulas already derived in \eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and \eqref{eq:subgrid_3d}, where it enters as $b$ along the single axis in one dimension and as $b_x$, $b_y$ and $b_z$ in two and three. Larger bins make larger subgrids, and \texttt{add\_wrapped\_subgrid} has to write out every cell of one, so adding slows down accordingly. Table~\ref{tab:binsize_subgrid} confirms both halves of this: the measured mean subgrid area follows \eqref{eq:subgrid_2d} across the range, and adding costs a constant number of cycles per subgrid cell, so its growth is entirely the growth of the subgrids. 
+Finally, bin size sets the size of the subgrids, through the formulas already derived in \eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and \eqref{eq:subgrid_3d}, where it enters as $b$ along the single axis in one dimension and as $b_x$, $b_y$ and $b_z$ in two and three. Larger bins make larger subgrids, and \texttt{add\_wrapped\_subgrid} has to write out every cell of one, so adding slows down accordingly. Table~\ref{tab:binsize_subgrid} confirms both halves of this: the measured mean subgrid area follows \eqref{eq:subgrid_2d} across the range, and adding costs a nearly constant number of cycles per subgrid cell, about $57$ over the middle of the range, so most of its growth is the growth of the subgrids. The constant is not perfectly flat. The three smallest bins pay about $65$ cycles per cell and the largest $69$, so the two ends of the range carry a cost that subgrid volume alone does not account for.
 
 \begin{table}[h]
     \centering
@@ -310,20 +346,20 @@ Finally, bin size sets the size of the subgrids, through the formulas already de
             \hline
             bin & $n_{\mathrm{bins}}$ & /L1d & Gcyc \\
             \hline
-            $4\times1$ & 8.4M & 683 & 88.10 \\
-            $8\times2$ & 2.1M & 171 & 42.56 \\
-            $16\times4$ & 526k & 42.8 & 21.22 \\
-            $32\times8$ & 132k & 10.7 & 13.86 \\
-            $48\times12$ & 58k & 4.8 & 11.27 \\
-            $64\times16$ & 33k & 2.7 & 8.02 \\
-            $96\times24$ & 15k & 1.2 & 5.70 \\
-            $128\times32$ & 8372 & 0.7 & 5.39 \\
-            $192\times48$ & 3751 & 0.3 & 4.99 \\
-            $256\times64$ & 2093 & 0.2 & 4.90 \\
-            $384\times96$ & 976 & 0.08 & 4.74 \\
-            $512\times128$ & 552 & 0.05 & 5.02 \\
-            $768\times192$ & 248 & 0.02 & 4.99 \\
-            $1024\times256$ & 138 & 0.01 & 4.80 \\
+            $4\times1$ & 8.4M & 1025 & 55.70 \\
+            $8\times2$ & 2.1M & 256 & 42.49 \\
+            $16\times4$ & 526k & 64.2 & 26.50 \\
+            $32\times8$ & 132k & 16.1 & 15.51 \\
+            $48\times12$ & 58k & 7.13 & 11.57 \\
+            $64\times16$ & 33k & 4.03 & 8.33 \\
+            $96\times24$ & 15k & 1.80 & 6.97 \\
+            $128\times32$ & 8372 & 1.02 & 6.42 \\
+            $192\times48$ & 3751 & 0.46 & 5.51 \\
+            $256\times64$ & 2093 & 0.26 & 5.03 \\
+            $384\times96$ & 976 & 0.12 & 4.66 \\
+            $512\times128$ & 552 & 0.07 & 4.68 \\
+            $768\times192$ & 248 & 0.03 & 4.24 \\
+            $1024\times256$ & 138 & 0.02 & 4.44 \\
             \hline
         \end{tabular}
         \caption{Sorting: the number of bins and the per-thread count array against L1d, with the cycles the sort takes.}
@@ -336,20 +372,20 @@ Finally, bin size sets the size of the subgrids, through the formulas already de
             \hline
             bin & /L1d & /L2 & Gcyc & L1 miss & L2 miss \\
             \hline
-            $4\times1$ & 0.03 & 0.00 & 3.06 & 0.082 & 0.030 \\
-            $8\times2$ & 0.04 & 0.00 & 3.35 & 0.055 & 0.034 \\
-            $16\times4$ & 0.08 & 0.00 & 3.17 & 0.041 & 0.039 \\
-            $32\times8$ & 0.19 & 0.01 & 3.20 & 0.034 & 0.033 \\
-            $48\times12$ & 0.34 & 0.01 & 3.09 & 0.033 & 0.030 \\
-            $64\times16$ & 0.53 & 0.02 & 3.13 & 0.036 & 0.031 \\
-            $96\times24$ & 1.04 & 0.04 & 3.16 & 0.101 & 0.030 \\
-            $128\times32$ & 1.71 & 0.06 & 3.45 & 0.280 & 0.029 \\
-            $192\times48$ & 3.56 & 0.13 & 3.72 & 0.481 & 0.029 \\
-            $256\times64$ & 6.08 & 0.23 & 3.89 & 0.559 & 0.030 \\
-            $384\times96$ & 13.1 & 0.49 & 4.11 & 0.619 & 0.033 \\
-            $512\times128$ & 22.8 & 0.86 & 4.88 & 0.639 & 0.066 \\
-            $768\times192$ & 50.2 & 1.88 & 7.47 & 0.654 & 0.319 \\
-            $1024\times256$ & 88.3 & 3.31 & 16.92 & 0.661 & 0.498 \\
+            $4\times1$ & 0.04 & 0.01 & 3.70 & 0.086 & 0.083 \\
+            $8\times2$ & 0.07 & 0.01 & 3.83 & 0.058 & 0.055 \\
+            $16\times4$ & 0.12 & 0.02 & 3.97 & 0.031 & 0.041 \\
+            $32\times8$ & 0.29 & 0.04 & 4.03 & 0.037 & 0.033 \\
+            $48\times12$ & 0.51 & 0.06 & 4.05 & 0.062 & 0.031 \\
+            $64\times16$ & 0.80 & 0.10 & 4.04 & 0.057 & 0.030 \\
+            $96\times24$ & 1.56 & 0.19 & 4.25 & 0.260 & 0.033 \\
+            $128\times32$ & 2.57 & 0.32 & 4.51 & 0.404 & 0.036 \\
+            $192\times48$ & 5.34 & 0.67 & 5.80 & 0.551 & 0.078 \\
+            $256\times64$ & 9.12 & 1.14 & 8.18 & 0.613 & 0.157 \\
+            $384\times96$ & 19.7 & 2.46 & 9.38 & 0.631 & 0.400 \\
+            $512\times128$ & 34.2 & 4.28 & 9.82 & 0.659 & 0.505 \\
+            $768\times192$ & 75.3 & 9.41 & 16.07 & 0.668 & 0.590 \\
+            $1024\times256$ & 132.4 & 16.5 & 55.55 & 0.686 & 0.634 \\
             \hline
         \end{tabular}
         \caption{Spreading: the d bin size against the cycles, and the L1 and L2 miss rates.}
@@ -362,26 +398,26 @@ Finally, bin size sets the size of the subgrids, through the formulas already de
             \hline
             bin & subgrid & Gcyc & cyc/cell \\
             \hline
-            $4\times1$ & 146k & 2.68 & 54.5 \\
-            $8\times2$ & 152k & 2.95 & 57.6 \\
-            $16\times4$ & 164k & 3.02 & 54.8 \\
-            $32\times8$ & 187k & 3.50 & 55.7 \\
-            $48\times12$ & 210k & 3.91 & 55.4 \\
-            $64\times16$ & 233k & 4.70 & 59.9 \\
-            $96\times24$ & 266k & 4.98 & 55.7 \\
-            $128\times32$ & 280k & 5.31 & 56.4 \\
-            $192\times48$ & 294k & 5.26 & 53.3 \\
-            $256\times64$ & 304k & 5.44 & 53.3 \\
-            $384\times96$ & 325k & 5.75 & 52.6 \\
-            $512\times128$ & 353k & 6.13 & 51.8 \\
-            $768\times192$ & 428k & 7.90 & 55.0 \\
-            $1024\times256$ & 526k & 10.16 & 57.5 \\
+            $4\times1$ & 146k & 3.17 & 64.4 \\
+            $8\times2$ & 152k & 3.39 & 66.4 \\
+            $16\times4$ & 164k & 3.56 & 64.6 \\
+            $32\times8$ & 187k & 3.63 & 57.8 \\
+            $48\times12$ & 210k & 4.10 & 58.0 \\
+            $64\times16$ & 233k & 4.47 & 57.1 \\
+            $96\times24$ & 266k & 5.10 & 57.1 \\
+            $128\times32$ & 280k & 5.44 & 57.9 \\
+            $192\times48$ & 294k & 5.74 & 58.2 \\
+            $256\times64$ & 304k & 5.80 & 56.8 \\
+            $384\times96$ & 325k & 6.20 & 56.7 \\
+            $512\times128$ & 353k & 6.68 & 56.4 \\
+            $768\times192$ & 428k & 7.88 & 54.8 \\
+            $1024\times256$ & 526k & 12.15 & 68.7 \\
             \hline
         \end{tabular}
         \caption{Adding: mean subgrid area, the cycles the adding step spends, and those cycles per subgrid cell.}
         \label{tab:binsize_subgrid}
     \end{subtable}
-    \caption{Bin size acting on the three steps it controls, for a 2D, $1$\,GiB, unit-density transform on all $40$ hardware threads of the test platform of Section~\ref{sec:platform}.}
+    \caption{Bin size acting on the three steps it controls, for a 2D, $1$\,GiB, unit-density transform on the test platform of Section~\ref{sec:platform}.}
     \label{tab:binsize_all}
 \end{table}
 
@@ -391,7 +427,7 @@ The two parameters examined in this chapter act on the same three steps of a sub
 
 The maximum subproblem size trades gathering against adding. Larger subproblems write back less total subgrid volume, because the padding of half a kernel width around each subgrid is paid once per subproblem, so adding falls steeply; gathering rises instead, and at large sizes there are too few subproblems to keep every thread busy, so the wall time of the phase grows even though the work done falls. Which of the two dominates is decided by the point density: at high density a full buffer of points covers only a small region of the grid and small subproblems are better, while at low density even a small buffer spreads over a large subgrid and large ones are better. Gathering, however, only slows down in some of these cases.  Gathering is thus insensitive to the subproblem size when few threads compete for memory and strongly sensitive when many do, which is why the trade-off against adding exists only at high thread counts: single-threaded, the best choice is simply the size that minimises the number of cells written.
 
-The bin dimensions act through three different quantities, each with its own threshold. The sort itself is governed by the number of bins, because it touches nothing but an array of counters held privately by each thread, and it reaches its floor once that array fits in the first-level cache -- which for the transform measured here happens only well above the library's default, leaving the default paying several times the floor. Spreading is governed by the region a bin covers once padded by the kernel, and is insensitive to bin size until that region no longer fits in cache, at which point its cost rises with the misses it causes. Adding is governed by the size of the subgrids the bins produce, which the relations of Section~\ref{sec:subgrid_size} predict, and its cost is proportional to the number of cells written with a constant that does not vary across the range.
+The bin dimensions act through three different quantities, each with its own threshold. The sort itself is governed by the number of bins, because it touches nothing but an array of counters held privately by each thread, and it reaches its floor once that array fits in the first-level cache -- which for the transform measured here happens only well above the library's default, leaving the default paying several times the floor. Spreading is governed by the region a bin covers once padded by the kernel, and is insensitive to bin size until that region no longer fits in cache, at which point its cost rises with the misses it causes. Adding is governed by the size of the subgrids the bins produce, which the relations of Section~\ref{sec:subgrid_size} predict, and its cost is close to proportional to the number of cells written, with a constant that holds to within about a tenth over the middle of the range and rises at both ends.
 
 Taken together, the two parameters cannot be chosen independently of each other or of the input. The subproblem size fixes how many points a subgrid must cover, the bin dimensions fix how far apart those points may lie, and it is their combination that determines total throughput. Balance between steps shifts when the density, the dimension and the thread count change. 
 

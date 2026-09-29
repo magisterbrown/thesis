@@ -85,7 +85,8 @@ def main():
             ax.set_axisbelow(True)
             # every panel names all three parameters: with 81 axes a reader
             # should not have to count rows and columns to place one
-            ax.set_title(f"{dim}D  $\\rho$={rho:g}  {thr} thr", fontsize=7.5)
+            label = "40" if thr == "all" else thr
+            ax.set_title(f"{dim}D  $\\rho$={rho:g}  {label} thr", fontsize=7.5)
             if j == 0:
                 ax.set_ylabel("cycles", fontsize=7)
             if i == len(densities) - 1:
