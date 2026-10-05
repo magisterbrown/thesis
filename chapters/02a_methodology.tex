@@ -72,7 +72,7 @@ Each configuration is run twice. The first run uses \texttt{perf stat}, which on
 
 \begin{itemize}
     \item \textbf{sorting}: \texttt{bin\_sort\_singlethread} and \texttt{bin\_sort\_multithread};
-    \item \textbf{gathering}: the body of the OpenMP region in \texttt{spreadSorted}. The gather loop is inlined into this body rather than being a function of its own, so this bucket also contains the enclosing subproblem loop and the allocation and zeroing of each subgrid; it is an upper bound on gathering alone;
+    \item \textbf{gathering}: the body of the OpenMP region in \texttt{spreadSorted}. The gather loop is inlined into this body rather than being a function of its own, so this bucket also contains the enclosing subproblem loop and the allocation and zeroing of each subgrid.
     \item \textbf{spreading}: \texttt{spread\_subproblem\_$d$d} and its kernel instantiations;
     \item \textbf{adding}: \texttt{add\_wrapped\_subgrid}.
 \end{itemize}

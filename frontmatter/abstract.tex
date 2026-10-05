@@ -1,11 +1,11 @@
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 
-FINUFFT is among the fastest libraries for the nonuniform fast Fourier transform. Its is heavily optimised, but its behaviour is also governed by a small set of configuration parameters that the library fixes from built-in heuristics, and whose effects have not been studied systematically.
+FINUFFT is among the fastest libraries for the nonuniform fast Fourier transform. It is heavily optimised, but its behaviour is also governed by a small set of configuration parameters that the library fixes from built-in heuristics, and whose effects have not been studied systematically.
 
 This thesis measures what those parameters do. The library is instrumented so that the cost of each stage of a transform can be attributed separately, a global search establishes which parameters matter at all, and each of them is then examined on its own.
 
-No parameter is found to be uniformly beneficial: each reduces the cost of one stage only by raising that of another, so that the optimum lies at an interior balance rather than at either extreme, and its location is contingent on both the problem instance and the host architecture. Trade-offs of geometric origin are captured in closed-form models, while the remainder are attributed to the memory hierarchy. The contribution is therefore an explanatory account of the observed parameter behaviour, together with the foundation on which an automatic selection could be constructed.
+No parameter is uniformly beneficial. Each one makes a stage of the transform cheaper only by making another more expensive, and the two stages it trades against each other lie in different parts of the algorithm, so no single value is best everywhere. The best value lies between the extremes rather than at either end, and where it lies depends both on the transform being computed and on the machine computing it. Where a trade-off follows from the geometry of the grids involved it is captured in closed-form models, accurate to within a percent; where it follows from the cache hierarchy it is explained instead by measured hardware counters. The result is an account of why each parameter behaves as it does, and of the quantities on which an automatic choice would have to be based.
 
 \vspace{1cm}
 \noindent\textbf{Keywords:} FINUFFT, nonuniform FFT, parameter selection, performance analysis
