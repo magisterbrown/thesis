@@ -3,13 +3,13 @@
 
 \section{Overview}
 
-The upsampling factor $\sigma$ is among the most impactful parameters in FINUFFT. It determines the size of the internal FFT grid relative to the output grid, and thus directly controls the memory footprint, cache behaviour, and compute cost of the transform. Raising $\sigma$ makes the FFT more expensive and spreading cheaper, so the two costs it trades have to be modelled separately before either can be reasoned about. This chapter derives a closed-form model for each of them at a given input configuration and tolerance requirement, and validates each against measurement: the spreading model in Section~\ref{sec:validate_spreading} and the FFT model in Section~\ref{sec:validate_fft}. The two are validated separately rather than summed into a single cost curve, so the chapter establishes how each term depends on $\sigma$ and how far each model can be trusted.
+The upsampling factor, written $\sigma$ throughout this chapter and exposed by the library as \texttt{upsampfac}, is among the most impactful parameters in FINUFFT. It determines the size of the internal FFT grid relative to the output grid, and thus directly controls the memory footprint, cache behaviour, and compute cost of the transform. Raising $\sigma$ makes the FFT more expensive and spreading cheaper, so the two costs it trades have to be modelled separately before either can be reasoned about. This chapter derives a closed-form model for each of them at a given input configuration and tolerance requirement, and validates each against measurement: the spreading model in Section~\ref{sec:validate_spreading} and the FFT model in Section~\ref{sec:validate_fft}. The two are validated separately rather than summed into a single cost curve, so the chapter establishes how each term depends on $\sigma$ and how far each model can be trusted.
 
 \section{The Role of $\sigma$ in FINUFFT}
 
 The upsampling factor $\sigma$ controls the size of the internal uniform FFT grid, which has $\sigma N$ points per dimension relative to the $N$ requested output modes. Increasing $\sigma$ enlarges the FFT grid, raising FFT cost, but simultaneously relaxes the tolerance requirement on the spreading kernel, permitting a smaller kernel half-width $w$. Because $w$ decreases and the grid size increases as $\sigma$ grows, there exists a value of $\sigma$ that minimises total transform cost for a given problem size, dimension, and tolerance.
 
-The spreading step that $w$ parametrises is shown in
+The spreading stage that $w$ parametrises is shown in
 Figure~\ref{fig:spreading_illustration}: each nonuniform point contributes its
 strength to the $w$ grid cells nearest it, weighted by the kernel, and the
 uniform array handed to the FFT is the sum of those contributions, so the cost
@@ -17,7 +17,7 @@ of the step is set by how many cells each point is spread into.
 
 Figure~\ref{fig:kernel_vs_sigma} shows that the width of the spreading kernel shrinks as
 $\sigma$ grows. Since each nonuniform point is spread into $w^d$ grid cells, a larger
-$\sigma$ therefore lowers the cost of the spreading step; the price is the larger FFT grid
+$\sigma$ therefore lowers the cost of the spreading stage; the price is the larger FFT grid
 it implies, and it is this trade-off that the rest of the chapter quantifies.
 
 \begin{figure}[h]
@@ -52,11 +52,11 @@ The interval studied in this chapter, $[1.25, 2.00]$, sits inside both bounds fo
 The current FINUFFT heuristic for $\sigma$ selection is a simple lookup: it returns one of only two possible values, $\sigma \in \{1.25, 2.00\}$. By default it returns $1.25$, but switches to $2.00$ when the point density $\rho = M/N$ exceeds a fixed threshold, or when the requested tolerance $\varepsilon$ is too tight for $\sigma = 1.25$ to reach. All upsampling factors in between are never considered, even though the true optimal $\sigma$ for a given problem often lies in the interior of $[1.25, 2.00]$.
 
 \section{Cost Model}
-This section describes cost models for FFT and spreading steps of the algorithm.
+This section describes cost models for FFT and spreading stages of the algorithm.
 
 \subsection{Estimating Spreading Cost}
 
-The spreading step accumulates contributions from each of the $M$ non-uniform source points onto a $w^d$ neighbourhood of grid cells. The minimum kernel half-width $w$ required to achieve tolerance $\varepsilon$ at upsampling $\sigma$ in $d$ dimensions is
+The spreading stage accumulates contributions from each of the $M$ non-uniform source points onto a $w^d$ neighbourhood of grid cells. The minimum kernel half-width $w$ required to achieve tolerance $\varepsilon$ at upsampling $\sigma$ in $d$ dimensions is
 \begin{equation}
     w = \left\lceil \frac{\log\!\left(\dfrac{0.18 \cdot 1.4^{d-1}}{\varepsilon}\right)}{\pi \sqrt{1 - 1/\sigma}} + 1 \right\rceil.
     \label{eq:kernel_width}

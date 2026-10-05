@@ -1,11 +1,46 @@
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 
-FINUFFT is among the fastest libraries for the nonuniform fast Fourier transform. It is heavily optimised, but its behaviour is also governed by a small set of configuration parameters that the library fixes from built-in heuristics, and whose effects have not been studied systematically.
+The nonuniform fast Fourier transform underlies image reconstruction in magnetic
+resonance imaging, gridding in radio interferometry and particle-mesh methods in
+molecular dynamics, and FINUFFT is among the fastest implementations of it. How
+the library computes a transform has been studied closely; how it should be
+configured has not. The library exposes a set of options and
+fixes several further constants in its source; six of them decide how the work is
+divided and how accurately each piece is computed. Their values come from
+constants chosen once, by hand, for a machine and a workload that may not be the
+ones in front of it.
 
-This thesis measures what those parameters do. The library is instrumented so that the cost of each stage of a transform can be attributed separately, a global search establishes which parameters matter at all, and each of them is then examined on its own.
+This thesis measures what those parameters do and why. The library is
+instrumented so that the cost of each stage of a transform can be attributed to
+that step alone, using timers placed inside its parallel region together with
+hardware performance counters. A search over the joint parameter space
+establishes which parameters account for the variation in execution time, and
+each of those is then examined on its own across dimensions, point densities,
+requested tolerances and thread counts. Where a cost follows from the structure
+of the algorithm, it is derived in closed form and checked against measurement.
 
-No parameter is uniformly beneficial. Each one makes a stage of the transform cheaper only by making another more expensive, and the two stages it trades against each other lie in different parts of the algorithm, so no single value is best everywhere. The best value lies between the extremes rather than at either end, and where it lies depends both on the transform being computed and on the machine computing it. Where a trade-off follows from the geometry of the grids involved it is captured in closed-form models, accurate to within a percent; where it follows from the cache hierarchy it is explained instead by measured hardware counters. The result is an account of why each parameter behaves as it does, and of the quantities on which an automatic choice would have to be based.
+The parameters are found to act in opposition rather than in isolation: each
+makes one step of the transform cheaper only by making another more expensive,
+so every optimum lies between the extremes rather than at either end, and its
+position moves with the problem and with the machine. The distances involved are
+large. One parameter is set fifty times above its best value for the transform
+measured, which costs a factor of $1.44$ in the phase it governs; a search over
+six parameters together finds a configuration $19\%$ faster than the defaults.
+The cause is usually the memory hierarchy: a stage doubles in cost at the point
+where the data a thread holds outgrows its share of the second-level cache, and
+a second parameter, worth nothing at the library's default, decides up to a
+third of the run time once the first is tuned.
+
+The behaviour therefore divides in two. One part follows from the geometry of
+the grids the algorithm builds, and is predictable: a closed-form model of the
+subgrid a configuration produces matches measurement to within a percent, and
+with it the cost of a step that was previously only measurable. The other part
+follows from where the data sits in the cache hierarchy; its thresholds can be
+located from the cache sizes, but the cost of crossing them must be measured on
+the machine at hand. The contribution is an account of why each parameter
+behaves as it does, and of the quantities on which an automatic choice would
+have to be based.
 
 \vspace{1cm}
 \noindent\textbf{Keywords:} FINUFFT, nonuniform FFT, parameter selection, performance analysis
