@@ -3,44 +3,39 @@
 
 The nonuniform fast Fourier transform underlies image reconstruction in magnetic
 resonance imaging, gridding in radio interferometry and particle-mesh methods in
-molecular dynamics, and FINUFFT is among the fastest implementations of it. How
-the library computes a transform has been studied closely; how it should be
-configured has not. The library exposes a set of options and
-fixes several further constants in its source; six of them decide how the work is
-divided and how accurately each piece is computed. Their values come from
-constants chosen once, by hand, for a machine and a workload that may not be the
-ones in front of it.
+molecular dynamics. FINUFFT is one of the fastest and most widely used
+implementations, which makes the values it selects for its configuration
+parameters consequential: they are constants compiled into the library, chosen
+once for a particular machine and workload, while the transforms it is asked to
+perform differ in dimension, point density, requested accuracy and thread count.
+How much performance those constants leave unused, and for what reason, has not
+been measured.
 
-This thesis measures what those parameters do and why. The library is
-instrumented so that the cost of each stage of a transform can be attributed to
-that step alone, using timers placed inside its parallel region together with
-hardware performance counters. A search over the joint parameter space
-establishes which parameters account for the variation in execution time, and
-each of those is then examined on its own across dimensions, point densities,
-requested tolerances and thread counts. Where a cost follows from the structure
-of the algorithm, it is derived in closed form and checked against measurement.
+This thesis instruments FINUFFT so that the cost of each stage of a transform
+can be attributed to that stage alone, using timers placed inside its parallel
+region together with hardware performance counters. A joint search over the six
+parameters that reach those stages ranks them by the variance in execution time
+they account for, and each of the parameters that ranks highly is then swept
+individually across dimensions, point densities, requested tolerances and thread
+counts. Where a cost follows from the structure of the algorithm it is derived in
+closed form and validated against measurement.
 
-The parameters are found to act in opposition rather than in isolation: each
-makes one step of the transform cheaper only by making another more expensive,
-so every optimum lies between the extremes rather than at either end, and its
-position moves with the problem and with the machine. The distances involved are
-large. One parameter is set fifty times above its best value for the transform
-measured, which costs a factor of $1.44$ in the phase it governs; a search over
-six parameters together finds a configuration $19\%$ faster than the defaults.
-The cause is usually the memory hierarchy: a stage doubles in cost at the point
-where the data a thread holds outgrows its share of the second-level cache, and
-a second parameter, worth nothing at the library's default, decides up to a
-third of the run time once the first is tuned.
+Every parameter examined trades one stage against another, so its best value
+lies between the extremes rather than at either end. For a two-dimensional
+transform of a gibibyte of nonuniform points, the subproblem size that minimises
+the spreading stage is roughly fifty times smaller than the constant the library
+selects, which costs a factor of $1.44$ in that stage; across the range the
+parameter can take, the stage varies by a factor of $1.71$. 
+Searching the six parameters together yields a configuration that runs
+$23\%$ faster than the defaults.
 
-The behaviour therefore divides in two. One part follows from the geometry of
-the grids the algorithm builds, and is predictable: a closed-form model of the
-subgrid a configuration produces matches measurement to within a percent, and
-with it the cost of a step that was previously only measurable. The other part
-follows from where the data sits in the cache hierarchy; its thresholds can be
-located from the cache sizes, but the cost of crossing them must be measured on
-the machine at hand. The contribution is an account of why each parameter
-behaves as it does, and of the quantities on which an automatic choice would
-have to be based.
+The thesis contributes a measurement of where a transform spends its time at the
+level of individual stages, a ranking of the parameters that govern them, and a
+closed-form model of subgrid size that predicts the cost of the adding stage to
+within one percent without measuring it. It explains each trade-off in terms of a
+specific threshold in the memory hierarchy, and it identifies the quantities --
+cache sizes, point density, dimension and thread count -- from which those
+thresholds can be computed for a machine and an input that were never benchmarked.
 
 \vspace{1cm}
 \noindent\textbf{Keywords:} FINUFFT, nonuniform FFT, parameter selection, performance analysis

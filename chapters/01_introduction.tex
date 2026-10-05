@@ -1,46 +1,275 @@
 \chapter{Introduction}
 \label{ch:introduction}
 
-\section{Motivation}
+\section{Background and Motivation}
 
-The nonuniform fast Fourier transform is a workhorse of computational science. It underlies image reconstruction in magnetic resonance imaging, gridding in radio interferometry, particle-mesh methods in molecular dynamics and cosmology, and cryo-electron microscopy, and in each of these it is often the dominant cost of the pipeline that contains it. FINUFFT is among the most widely used implementations, and a large body of work has gone into making its inner loops fast: a carefully chosen kernel, hand-vectorised evaluation, and a parallel spreading scheme that avoids contention between threads.
+Many measurements in science are not taken on a grid. A magnetic resonance
+scanner samples along spirals or radial spokes, a radio interferometer samples
+wherever its pairs of antennas happen to point, and a molecular dynamics code
+carries particles that move continuously through space. Analysing such data in
+the frequency domain calls for a Fourier transform between scattered points and
+uniform frequencies. Evaluating that transform directly costs $O(MN)$ operations
+for $M$ points and $N$ frequencies, and the fast Fourier transform, which would
+reduce the cost to $O(N \log N)$, applies only to samples that are equally
+spaced. The nonuniform fast Fourier transform bridges the two. It spreads each
+scattered point onto a fine uniform grid using a smooth kernel of finite width,
+transforms that grid with an ordinary FFT, and then divides out the effect of
+the kernel, recovering the speed of the FFT at an accuracy the caller requests
+in advance.
 
-What has received far less attention is how the library should be \emph{configured}. FINUFFT's behaviour is governed by a set of parameters -- the upsampling factor that fixes the size of the intermediate grid, the maximum size of a spreading subproblem, the dimensions of the boxes the nonuniform points are sorted into, and several others -- and their values are chosen by heuristics fixed when the library is built or, at best, by simple rules evaluated at run time. Several are not exposed to the user at all. These heuristics are not arbitrary; they encode real experience. But they are fixed, while the transforms the library is asked to perform are not.
+The cost of that construction matters because it is rarely paid once. Iterative
+image reconstruction in magnetic resonance imaging evaluates a transform and its
+adjoint at every iteration; gridding in radio interferometry repeats one for
+every frequency channel and every time step; particle-mesh methods in molecular
+dynamics and cosmology evaluate one at every step of the simulation. In each of
+these pipelines the transform is frequently the single most expensive component,
+so the rate at which it runs sets the rate at which the surrounding computation
+runs.
 
-The consequences of a poor choice are signifficant. A configuration search over a single representative transform, reported in Chapter~\ref{ch:parameter_importance}, produces execution times spanning 5\% faster, and the parameters responsible for that spread are precisely the ones a user is least equipped to reason about. A library therefore runs slower, without any indication that anything is wrong.
+FINUFFT~\cite{barnett2019} is among the most widely used implementations.
+Considerable effort has gone into making its inner loops fast: a kernel shaped
+so that it can be evaluated cheaply at run time, hand-vectorised evaluation of
+that kernel, and a parallel spreading scheme in which each thread accumulates
+into a private subgrid, so that threads do not contend for the shared output
+grid. Three properties make it a suitable subject for a study of configuration.
+It is in production use, so its behaviour affects real workloads rather than a
+benchmark written for the occasion. It is open source, so the constants that
+govern that behaviour can be read, instrumented and varied. And it is built like
+the other implementations of the algorithm, sorting the points into bins and
+spreading them in independent subproblems, so what is learned about where its
+time goes is not peculiar to it.
 
-\section{Problem Definition}
+How long a transform takes is therefore not settled by the quality of those
+inner loops alone. The algorithm proceeds in stages -- sorting the nonuniform
+points, spreading them onto the fine grid, transforming that grid, and
+correcting for the kernel afterwards -- and a small set of configuration
+parameters decides how much work each stage is given: how large the fine grid
+is, how many points a thread processes at a time, and how the points are grouped
+before they are spread. A parameter that shrinks the work in one stage usually
+enlarges it in another, so the fastest configuration is a balance rather than an
+extreme. The library chooses that balance itself, from values fixed when it is
+built. How well it chooses, and what is lost when it chooses badly, is the
+subject of this thesis.
 
-FINUFFT exposes a set of configuration parameters through which a user can tune the performance of a particular transform, and six of them reach the stages where the time is spent. Tuning them is difficult in practice, because the parameters that matter most have no obvious interpretation: each acts not on the transform as a whole but on its individual stages, and on different stages in opposite directions.  
+\section{Problem Statement}
 
-Lacking any basis on which to prefer one value to another, a user tunes by trying values, measuring, and keeping whichever happened to be fastest. That is slow, it gives no reason to expect the winning value to remain the right one for a different input or a different machine, and it offers no way to distinguish a real effect from measurement noise. Nor can the difficulty be resolved simply by measuring more carefully: a parameter that halves one stage and doubles another leaves the total unchanged, so an end-to-end timing reveals neither which stage moved nor why.
+The values FINUFFT gives its configuration parameters are not chosen for the
+transform in front of it. Most are constants written into the source and fixed
+when the library is built; a few are selected at run time by short rules that
+look at the requested tolerance or the transform type. Two of them, the
+dimensions of the boxes the points are sorted into, are not exposed to the user
+at all. These values are not arbitrary, and they encode the experience of the
+library's authors, but they are fixed while the transforms the library is asked
+to perform are not: a call may be one-, two- or three-dimensional, may place a
+hundred points in each grid cell or one in every eight, may ask for three digits
+of accuracy or fourteen, and may run on one thread or on forty with a cache
+hierarchy the authors never saw.
 
+What makes the right value hard to guess is that no parameter acts on the
+transform as a whole. Consider the upsampling factor, which fixes how much finer
+the internal grid is than the output grid. Raising it enlarges that grid, so the
+FFT in the middle of the algorithm transforms more data and takes longer. But a
+finer grid also places the aliases the spreading kernel produces further apart,
+so a narrower kernel suffices for the same accuracy, and spreading touches fewer
+cells for every point it deposits. One stage is made more expensive and another
+cheaper by the same change, and which effect wins depends on how many points
+there are per grid cell, on how much accuracy was asked for, and on how much of
+the grid fits in cache. The maximum size of a spreading subproblem and the
+dimensions of the sort boxes behave the same way, each trading one pair of
+stages against another. A user who wants to set them well therefore needs to
+know not that the parameter is important, but which stages it moves, in which
+directions, and what decides where the two effects balance.
+
+That a cheaper configuration exists at all is known. Beatty et al.~\cite{beatty2005}
+showed that the conventional upsampling factor of two is not required: a whole
+family of upsampling factors and kernel widths reaches any given accuracy, so
+the grid can be made smaller if the kernel is made wider. How to choose within
+that family has been approached by measurement. gNUFFTW~\cite{ou2017} tunes a
+GPU nonuniform transform by running candidate configurations during planning and
+keeping the fastest, and reports order-of-magnitude gains from the oversampling
+ratio alone. FFTW~\cite{frigo2005} does the same for the ordinary FFT, assembling
+each transform from interchangeable steps and timing the candidates on the
+machine it finds itself on. General frameworks such as OpenTuner~\cite{ansel2014opentuner}
+apply the idea to arbitrary programs. What all of these produce is a
+configuration that is fast for this input, on this machine, today.
+
+They do not produce an explanation, and three things follow from that. A search
+costs many transforms before it returns anything, so it repays itself only when
+the same plan is executed many times, which is not how a library call is
+typically used. Its answer carries no reason, so nothing about it transfers: a
+value found at one point density, or on one cache hierarchy, says nothing about
+another, and the search must be repeated. And a search cannot say which part of
+the transform it improved, because it sees only the total. That last limitation
+is not an accident of how searches are built. A parameter that halves the cost
+of one stage and doubles the cost of another leaves the total unchanged, so an
+end-to-end timing reports no effect where two large effects have cancelled.
+Measuring the stages separately is not straightforward either: gathering,
+spreading and adding all run inside a single parallel region, so no timer placed
+outside the library can separate them.
+
+The missing knowledge is therefore not which configuration is fastest for a
+particular transform, which a search can already find, but how the cost of each
+stage depends on each parameter, and what fixes the point at which the opposing
+effects balance. With that, a good value could be derived from properties that
+are known before the transform runs -- the dimension, the point density, the
+requested tolerance, the thread count and the sizes of the machine's caches --
+rather than found by trying values, and the cases in which the library's fixed
+constants are adequate could be distinguished from those in which they are not.
+
+\section{Thesis Objective and Scope}
+
+The objective of this thesis is to explain, stage by stage, how FINUFFT's
+configuration parameters determine the time a transform takes, and to express in
+closed form those parts of that behaviour which follow from the structure of the
+algorithm rather than from the machine. The aim is that a good value for a
+parameter can be derived from properties known before the transform runs -- its
+dimension, its point density, the accuracy requested of it, the number of
+threads and the sizes of the caches they share -- rather than found by trying
+values and keeping the fastest.
+
+The study is bounded in six ways. It examines \emph{type-1 transforms}, in which
+scattered points are spread onto a uniform grid. A type-2 transform runs the
+same machinery in reverse and inherits the mechanisms described here, but is not
+measured separately; a type-3 transform appears only in the stage breakdown of
+Chapter~\ref{ch:parameter_importance}, where it is shown to divide its time
+differently because much of its work falls in \texttt{setpts}. All three
+\emph{dimensionalities} are covered, with the two-dimensional case used as the
+reference workload. The measurements are in \emph{double precision}, except in
+Chapter~\ref{ch:sigma_selection}, where the cost of the FFT and of the spreading
+kernel is also measured in single precision.
+
+Of the options FINUFFT exposes, six are studied: whether the points are sorted,
+the upsampling factor, the maximum subproblem size, the thread count above which
+the adding stage switches from a critical section to atomic updates, and the two
+\emph{sort bin dimensions}. The last two are compile-time constants in the
+released library and had to be exposed before they could be varied. The
+remaining options are excluded because they change a convention rather than the
+work performed, because they apply only to vectorised calls that transform
+several strength vectors at once, or because they have no effect in current
+versions; Section~\ref{sec:finufft_parameters} lists them and gives the reason
+in each case.
+
+All measurements were taken on a \emph{single machine}, the Xeon E5-2698 v4
+described in Section~\ref{sec:platform}. The models derived here are written in
+terms of that machine's cache sizes and thread count rather than in absolute
+times, so they are expected to transfer to other hardware, but that expectation
+was not tested. Within that machine, \emph{performance is studied at fixed
+accuracy}: FINUFFT derives the kernel width from the requested tolerance and the
+upsampling factor, so every configuration compared here meets the same error
+target, and accuracy enters as a constraint on which configurations are
+admissible rather than as a quantity to be traded against speed.
+
+Finally, the thesis \emph{explains and predicts rather than tunes}. It does not
+deliver an automatic parameter selector, and no change to FINUFFT's own
+heuristics is proposed or evaluated. What it provides instead are the cost
+models, the thresholds and the measured constants from which such a selector
+could be built, and Chapter~\ref{ch:conclusion} sets out what would remain to be
+done.
 
 \section{Research Questions}
 
-This thesis addresses the following questions.
+This thesis addresses three questions.
 
 \begin{enumerate}
-    \item \textbf{Which configuration parameters affect performance?} FINUFFT exposes a set of options, and hides several further constants in its source. Chapter~\ref{ch:parameter_importance} establishes where the time of a transform is spent across its stages, and ranks the parameters by how much of the variance in execution time each accounts for over a joint search of the configuration space.
+    \item \textbf{Which of FINUFFT's configuration parameters affect performance?}
+    An answer names the parameters whose values change the execution time of a
+    transform appreciably, over the range of values each can take, and separates
+    them from those that do not.
 
-    \item \textbf{Through which mechanism does each parameter act, and where do the resulting trade-offs balance?} Rather than treating the transform as a single measurement, Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning} separate it into sorting, gathering, spreading, adding and the FFT, and attribute the effect of each parameter to the stages it speeds up and the stages it slows down. Because those effects oppose one another, each parameter has an interior optimum, and the question is what its position depends on: point density, dimension, requested tolerance, thread count, and the sizes of the levels of the cache hierarchy.
+    \item \textbf{Through which mechanism does each of those parameters act, and
+    what fixes the point at which its trade-off balances?} An answer identifies,
+    for each parameter, the stages whose cost it reduces and the stages whose
+    cost it raises, and the properties of the input and of the machine that
+    decide which of the two prevails.
 
-    \item \textbf{Can the cost of each stage be captured in a closed-form model accurate enough to predict good parameter values without measuring them?} For each trade-off identified by the previous question, Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning} derive a model from the structure of the algorithm and the sizes of the cache hierarchy -- the spreading and FFT costs as functions of $\sigma$, and the average subgrid size as a function of the subproblem size and bin shape -- and validate it against measurement. The question is how far each model reaches: whether it predicts absolute cost, only the ranking of candidate values, or neither, and which of its constants must still be measured on the target machine.
-
+    \item \textbf{Which of those costs can be written in closed form accurately
+    enough to choose a value without measuring it?} An answer distinguishes what
+    such a model predicts -- an absolute cost, an ordering of candidate values,
+    or only the location of a threshold -- from what must still be measured on
+    the machine at hand.
 \end{enumerate}
 
 \section{Contributions}
 
-The main contributions of this thesis are the following.
+The contributions of this thesis are of three kinds: a way of measuring where a
+transform spends its time, a set of measurements made with it, and models that
+reproduce part of what those measurements show.
 
+\paragraph{Methodological.}
 \begin{itemize}
-    \item \textbf{A per-stage measurement of the spreading stage.} The three stages a subproblem passes through -- gathering, spreading kernel evaluation and adding -- are executed concurrently by all threads. They are compared here by attributing sampled processor cycles to the functions that implement them, with hardware performance counters recorded alongside, so that the effect of every parameter can be traced both to the stage it acts on and to its cause: cache capacity, memory contention between threads, or load imbalance.
+    \item \textbf{A method for attributing cost to the stages inside a parallel
+    region.} Gathering, spreading kernel evaluation and adding are executed
+    concurrently by every thread, so no timer placed outside the library can
+    separate them. They are separated here in two ways: by timers placed inside
+    the region and read by the thread that runs each stage, and by attributing
+    sampled processor cycles to the functions that implement them. Hardware
+    performance counters recorded alongside allow an effect to be traced both to
+    the stage it acts on and to its cause -- cache capacity, contention for
+    memory between threads, or imbalance in the work given to each.
 
-    \item \textbf{A ranking of FINUFFT's configuration parameters.} A Gaussian-process search over six parameters of a one-gibibyte two-dimensional transform, including two that the library does not expose, attributes the variance in execution time to each of them (Chapter~\ref{ch:parameter_importance}). Sorting dominates, and once it is enabled the upsampling factor and the sort bin dimensions account for most of what remains, while the maximum subproblem size accounts for little of the variance on this workload, despite a substantial absolute effect on the spreading stage. The best configuration found is $5.2\%$ faster than the library defaults.
-
-    \item \textbf{Cost models for the upsampling factor.} Chapter~\ref{ch:sigma_selection} models the two costs that $\sigma$ trades against each other. The spreading model reproduces the measured cost across one, two and three dimensions, and shows without profiling how increasing $\sigma$ reduces the cost of spreading. The FFT model consists of two throughput models, one for transforms whose fine grid exceeds the cache and one for transforms that fit in it.  It allows to find better $\sigma$ value inside $[1.25, 2.00]$, rather than library's two-valued heuristic that cannot reach it.
-
-    \item \textbf{Closed-form models of subgrid size.} Chapter~\ref{ch:parameter_tuning} derives the average size of the subgrid produced by a given subproblem size and bin shape in one, two and three dimensions, and validates it to within one percent against subgrids logged by the spreader. Since the cost of the adding stage is proportional to the number of cells written, the model predicts that cost for configurations that were never measured.
-
-    \item \textbf{An account of the subproblem size and bin dimension trade-offs.} The same chapter shows that point density decides whether gathering or adding sets the best subproblem size, and that the sort bin dimensions act on three stages through three different quantities: the sort through the size of its counter array against the first-level cache, spreading through the padded area of a bin against the first and second levels, and adding through the subgrid area. To measure them, the bin dimensions were exposed as options of the library.
+    \item \textbf{An instrumented build in which the sort bin dimensions are
+    settable.} They are compile-time constants in the released library, and
+    exposing them as options is what makes it possible to study them at all.
 \end{itemize}
+
+\paragraph{Empirical.}
+\begin{itemize}
+    \item \textbf{A ranking of FINUFFT's configuration parameters.} A joint
+    search over the six parameters that reach the stages where the time is spent
+    attributes the variation in execution time to each of them. Whether the
+    points are sorted dominates; once sorting is enabled, the upsampling factor
+    and the sort bin dimensions account for most of what remains, while the
+    maximum subproblem size accounts for little of the variation on this
+    workload despite a substantial effect on the spreading stage alone. The best
+    configuration found reduces the time of the transform by $23.3\%$ against
+    the library defaults.
+
+    \item \textbf{An account of the trade-offs the spreader parameters govern.}
+    The point density decides whether gathering or adding sets the best
+    subproblem size; the sort bin dimensions act on three stages through three
+    different quantities, the sort through the size of its counter array against
+    the first-level cache, spreading through the area a bin covers against the
+    first and second levels, and adding through the size of the subgrids the
+    resulting point order produces; and the choice between a critical section
+    and atomic updates reverses between low and high thread counts, by a margin
+    that depends on how many subproblems the transform is divided into.
+\end{itemize}
+
+\paragraph{Modelling.}
+\begin{itemize}
+    \item \textbf{A closed-form model of subgrid size.} The average size of the
+    subgrid produced by a given subproblem size and bin shape is derived in one,
+    two and three dimensions and validated to within one percent against
+    subgrids logged by the spreader. Because the adding stage costs a fixed
+    amount per cell written, the model predicts the cost of that stage for
+    configurations that were never measured.
+
+    \item \textbf{Cost models for the upsampling factor.} The cost of spreading
+    as a function of $\sigma$ is reproduced across all three dimensions, so the
+    effect of raising $\sigma$ on that stage can be evaluated without profiling.
+    The cost of the FFT is described by two regimes, according to whether the
+    fine grid fits in the last-level cache, and the boundary between them is
+    fixed by the cache size rather than fitted.
+\end{itemize}
+
+\section{Thesis Organization}
+
+The remainder of this thesis is organised as follows.
+Chapter~\ref{ch:background} introduces the nonuniform fast Fourier transform,
+the structure FINUFFT gives it, and the prior work on choosing parameters by
+measurement.
+Chapter~\ref{ch:methodology} describes the machine, the workloads and the
+instrumentation on which every later measurement rests, including how the
+stages of a subproblem are separated from one another.
+Chapter~\ref{ch:parameter_importance} establishes where a transform spends its
+time and which of the six parameters account for the variation in it, narrowing
+the field for the two chapters that follow.
+Chapter~\ref{ch:sigma_selection} takes the upsampling factor, the highest-ranked
+of them, and models the two costs it trades against each other.
+Chapter~\ref{ch:parameter_tuning} does the same for the parameters that govern
+the spreader -- the maximum subproblem size, the sort bin dimensions and the
+choice of synchronisation -- and derives the model of subgrid size on which
+their behaviour rests.
+Chapter~\ref{ch:conclusion} answers the research questions, states the
+limitations of the study, and sets out what a parameter selector built on these
+results would still require.

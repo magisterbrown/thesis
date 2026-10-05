@@ -27,9 +27,9 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 BAR, BAR2, DEFAULT, BEST = "#2a78d6", "#7b3fb5", "#c2410c", "#1baf7a"
-DEFAULT_S = 0.5087         # sigma=1.25, sort=1, bins 16x4, max_sp=100k;
+DEFAULT_S = 2.142         # sigma=1.25, sort=1, bins 16x4, max_sp=100k;
                            # median of 5 runs on the same node
-TIMEOUT_S = 8.0            # trials at the cap are censored, not measured
+TIMEOUT_S = 20.0            # trials at the cap are censored, not measured
 def label(p):
     # the shared "spread_" prefix costs width and says nothing
     return p.replace("spread_", "")

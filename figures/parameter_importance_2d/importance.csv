@@ -1,7 +1,7 @@
 param,importance
-spread_sort,0.8571154001542579
-upsampfac,0.1059832100634928
-spread_bin_size_x,0.015635287659479837
-spread_bin_size_y,0.011303245920374717
-spread_nthr_atomic,0.00675944096333295
-spread_max_sp_size,0.003203415239061907
+spread_sort,0.995000
+upsampfac,0.003000
+spread_bin_size_y,0.002000
+spread_max_sp_size,0.000000
+spread_bin_size_x,0.000000
+spread_nthr_atomic,0.000000
