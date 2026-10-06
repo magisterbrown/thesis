@@ -1,30 +1,95 @@
 \chapter{Conclusion}
 \label{ch:conclusion}
 
-\section{Summary of Contributions}
+\section{Main Findings}
+\label{sec:main_findings}
 
-This thesis examined the configuration parameters that govern the cost of a nonuniform fast Fourier transform in FINUFFT, and measured how each of them acts on the individual stages of the algorithm rather than on the transform as a whole. Stage-level timing first established that for types 1 and 2 the \texttt{execute} stage, which performs the spreading and interpolation and the FFT, takes the large majority of the time, with \texttt{setpts} a smaller but non-negligible share and \texttt{makeplan} close to zero. Those are the stages on which every parameter studied here acts. A Gaussian-process search over the joint space of six parameters then ranked them by their contribution to the variance in execution time, and the chapters that followed took the highest-ranked of them apart mechanism by mechanism: the upsampling factor $\sigma$ in Chapter~\ref{ch:sigma_selection}, and the maximum subproblem size and the sort bin dimensions in Chapter~\ref{ch:parameter_tuning}.
+For type-1 and type-2 transforms the time is concentrated in one place. The
+\texttt{execute} stage, which spreads the points, transforms the fine grid and
+corrects for the kernel, takes the large majority of it; \texttt{setpts}, which
+sorts the points, takes a smaller but non-negligible share; and \texttt{makeplan}
+takes almost none. A type-3 transform divides its time differently, because the
+inner plan it needs and its per-target correction factors are both built in
+\texttt{setpts}. Every parameter studied here acts inside the first two of those
+stages.
 
-\subsection{Conclusion}
 
-The common finding across all of them is that none of these parameters has a monotone effect. Each one accelerates one stage of the algorithm and slows another, so the cost as a function of the parameter is a sum of two opposing terms and its minimum lies at the point where they balance. The upsampling factor sets the width of the kernel and the size of the fine grid at the same time: raising it narrows the kernel and makes spreading cheaper, while enlarging the grid the FFT has to transform. The maximum subproblem size trades adding against gathering: larger subproblems write back less total subgrid volume, because the padding around each subgrid is paid once per subproblem, while gathering slows down once the staging buffer of points no longer fits in a thread's share of the second-level cache. Beyond the point where the two balance, the wall time of the phase keeps rising for a third reason, that too few subproblems remain to keep every thread busy. The sort bin dimensions trade the cost of the bin sort itself, which is governed by how many bins the counter array has to hold, against the size of the subgrids that the resulting point ordering produces, which the adding stage must write out in full; and they do so subject to a third constraint, that the region a bin covers must stay small enough for the spreading stage to write into it without leaving the first-level cache.
+Each parameter moves the total, and there are two kinds of parameters. 
+Four of them -- the upsampling factor,
+the maximum subproblem size and the two bin dimensions -- reduce the cost of one
+stage only by raising the cost of another, so the cost as a function of the
+parameter is a sum of two opposing terms and the best value lies where they
+balance rather than at either extreme. The remaining two do not balance two
+stages against each other. Sorting is a binary choice, and it should be enabled
+for any input of a realistic size. The synchronisation threshold is an integer
+that may take any value, but the library compares it with the thread count and
+nothing else, so all it selects is which of two implementations of the adding
+stage is used: a critical section when the thread count does not exceed it, and
+atomic updates when it does. Its effect is therefore a step rather than a
+balance, and only its position relative to the thread count matters. Which side
+of that step is faster reverses with the thread count itself: below roughly ten
+threads the critical section wins, above it the atomic updates do.
 
-The position of these balance points is not a property of the library but of the problem and the machine it runs on. Point density decides how many points a subproblem draws from a given region of the grid, and therefore how the cost of writing a subgrid compares with the cost of filling it; the requested tolerance fixes the kernel width, and with it both the spreading work per point and the padding around every subgrid; and the cache hierarchy sets hard thresholds that several of the parameters cross, the sort counter array against the first-level data cache and the region covered by a bin against the first and second levels. Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning} give closed-form models for the quantities these thresholds apply to and validate them against measurements taken from the spreader itself. They do not all reach equally far: the average subgrid size a given subproblem size and bin shape produce is predicted to within a percent, and the spreading cost as a function of $\sigma$ reproduces the measured steps, whereas the model of the FFT cost holds only for transforms whose fine grid exceeds the last-level cache and is dominated by a fixed per-call overhead below it.
+Where those balance points lie is a property of the problem and of the machine,
+not of the library, and the quantities that fix them are few. The point density
+decides how large a region a subproblem's points cover, and so whether writing a
+subgrid or filling it dominates. The requested tolerance affects the kernel width,
+and with it both the work per point and the padding around every subgrid. The
+dimension multiplies that padding along every axis. The thread count changes how
+fraction of l3 cache each thread has and how many threads contend for memory at once. The
+thresholds these produce are sharp and can be located with experiments: gathering
+doubles in cost once the staging buffer outgrows a thread's share of the
+second-level cache, which at $32$ bytes per point is $4096$ points in two
+dimensions; the sort reaches its floor once its counter array fits in the
+first-level cache; and spreading leaves its flat regime once the region a bin
+covers no longer fits there. The distances involved are not small. For the
+reference transform the constant the library selects for the subproblem size
+costs $1.44$ times the best value measured, and the synchronisation choice,
+worth nothing at that constant, is worth up to a third of the run time once the
+subproblem size is tuned.
+
+The behaviour therefore separates into a part that can be predicted and a part
+that must be measured. What follows from the geometry of the grids is
+predictable: the average size of the subgrid a given subproblem size and bin
+shape produce is derived in closed form and matches measurement to within one
+percent, and because the adding stage costs a fixed number of cycles per cell
+written, that model predicts the cost of the stage for configurations never run.
+The cost of spreading as a function of the upsampling factor is reproduced in
+all three dimensions. What follows from the memory hierarchy is predictable only
+in part: the position of each threshold follows from a cache size, but the cost
+of crossing it does not, and the model of the FFT holds only for transforms
+whose fine grid exceeds the last-level cache, below which a fixed per-call
+overhead dominates.
 
 \section{Answers to the Research Questions}
 \label{sec:rq_answers}
 
-\paragraph{RQ1: Which configuration parameters affect performance?}
-Two of the six have a setting that should remain constant: sorting should be left on, and the atomic threshold should stay at $10$. The other four -- the upsampling factor, the maximum subproblem size and the two bin dimensions -- have an effect on performance that depends on the hardware and on the data. The upsampling factor sets the size of the uniform FFT grid: a larger grid allows the spreading kernel to shrink, which reduces the work per point during spreading. The bin dimensions change the total number of bins, which affects the sorting time, while larger bins increase the number of subgrid cells written, and very large bins exceed the data cache and slow the spreading kernel down. The maximum subproblem size affects gathering and adding: a larger value makes the gathering buffer larger, which takes more time to refill once it exceeds the cache, while at the same time it lowers the total number of subgrid cells written.
+\paragraph{RQ1: Which of FINUFFT's configuration parameters affect performance?}
+Six of the options the library carries reach the stages in which the time is
+spent, and all six change the execution time measurably, but not by comparable
+amounts. Whether the points are sorted dominates every other effect; among
+configurations that sort, the upsampling factor and the two bin dimensions
+together account for almost all of the remaining variation, and the maximum
+subproblem size and the synchronisation threshold for a few percent between
+them. The two smallest shares are the least transferable of the five: both
+parameters act only on the spreading stage, so their contribution to the total
+falls as the FFT grows
 
-\paragraph{RQ2: Through which mechanism does each parameter act, and where do the resulting trade-offs balance?}
+\paragraph{RQ2: Through which mechanism does each of those parameters act, and
+what fixes the point at which its trade-off balances?} 
 Every parameter studied speeds up one stage and slows another, so each has an interior optimum. The upsampling factor trades spreading against the FFT: raising $\sigma$ narrows the kernel, making spreading cheaper, and enlarges the fine grid the FFT must transform (Chapter~\ref{ch:sigma_selection}). The maximum subproblem size trades gathering against adding (Chapter~\ref{ch:parameter_tuning}). Adding falls as subproblems grow, because the padding of every subgrid is paid once per subproblem; gathering rises once the per-thread staging buffer no longer fits in that thread's share of L2, because its writes then occupy line-fill buffers for a full memory round trip. The sort bin dimensions act on three stages through three quantities: the sort through the size of its per-thread counter array against L1, spreading through the padded region a bin covers against L1 and L2, and adding through the size of the subgrids the resulting point order produces. Where each balance lies depends on point density, which decides how large a region a subproblem's points cover; on the tolerance, which sets the kernel width and with it the padding; on dimension, which multiplies that padding along every axis; on the thread count, since gathering slows down only when many threads compete for memory; and on the cache sizes, which set the thresholds above.
 
-\paragraph{RQ3: Can the cost of each stage be captured in a closed-form model accurate enough to predict good parameter values without measuring them?}
-Two of the models are accurate enough to predict cost directly. The spreading model of Chapter~\ref{ch:sigma_selection} reproduces the measured spreading time as a function of $\sigma$ in one, two and three dimensions, and the subgrid-size model of Chapter~\ref{ch:parameter_tuning} predicts the adding time as a function of the maximum subproblem size and the bin dimensions, since adding costs a fixed amount per cell written. The effect of the bin dimensions on sorting and spreading is captured by comparing the bin count and the padded bin area against the cache sizes: each stage is cheap while its working set fits in the corresponding cache level, and becomes more expensive once it does not. The effect of the maximum subproblem size on gathering is only partly captured: gathering time grows with the subproblem size, but the relation is not linear, so the model captures the direction of the change but not its magnitude. Finally, FFT throughput follows the $\mathcal{O}(\tilde{N}\log\tilde{N})$ model for transforms whose fine grid is larger than the last-level cache, while for transforms that fit in cache the time is dominated by a fixed per-call overhead, so their throughput grows roughly in proportion to the transform size.
-%Tell that spreading and adding have accurate models 
-%In part. The effect of both the maximum subproblem size and the bin dimensions on the adding stage is predicted accurately, because it follows from the subgrid size: the closed-form model of Section~\ref{sec:subgrid_size} predicts the average subgrid produced by a given subproblem size and bin shape to within $1\%$ in one, two and three dimensions, and since the cost of adding is proportional to the number of cells written, it predicts that cost for configurations that were never measured. The maximum subproblem size also acts on gathering, but that effect is simpler and is not modelled beyond its threshold: gathering only becomes slower as the subproblem size grows, once the per-thread staging buffer no longer fits in that thread's share of L2. The bin dimensions also act on two earlier stages. The sort, which runs in \texttt{setpts} before any spreading, keeps a per-thread array with one counter per bin, so its cost is set by the number of bins and reaches its floor once that array fits in the first-level data cache. Spreading writes each point into the region its bin covers, padded by the kernel width, and is insensitive to the bin dimensions until that padded region no longer fits in the first- and second-level caches, after which its cost rises with the misses it causes. For both stages the models locate the threshold from the cache sizes, but do not predict the cost on either side of it.
-%The spreading model of Chapter~\ref{ch:sigma_selection} reproduces the measured cost as a function of $\sigma$ in all three dimensions, stepping where the measurement steps, and can locate the $\sigma$ that minimises spreading without profiling. The FFT model does not reach the same accuracy: its $\mathcal{O}(\tilde{N}\log\tilde{N})$ form ranks candidate values of $\sigma$ at a fixed problem size, but it is accurate only for transforms whose fine grid exceeds the last-level cache.
+\paragraph{RQ3: Which of those costs can be written in closed form accurately
+enough to choose a value without measuring it?} Those that follow from the
+geometry of the grids can. The subgrid a configuration produces is predicted to
+within a percent, and with it the cost of the adding stage, which is
+proportional to the cells written; the cost of spreading as a function of the
+upsampling factor is reproduced in all three dimensions. Those that follow from
+the memory hierarchy can be located but not evaluated: the value of a parameter
+at which a working set leaves a cache level is given by the capacity of that
+level, while the cost of crossing it is not, and must be measured once on the
+machine. The model of the FFT cost is the weakest of the three, holding only
+where the fine grid exceeds the last-level cache.
 
 \section{Limitations}
 
