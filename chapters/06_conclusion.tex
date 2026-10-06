@@ -92,6 +92,7 @@ machine. The model of the FFT cost is the weakest of the three, holding only
 where the fine grid exceeds the last-level cache.
 
 \section{Limitations}
+\label{sec:limitations}
 
 The measurements throughout were taken on one machine, the Intel Xeon E5-2698 v4 of Section~\ref{sec:platform}, and the thresholds that turn out to matter most are expressed in terms of its cache sizes. The models are written in terms of those sizes rather than in absolute numbers, so they transfer in principle, but this was not verified on hardware with a different cache hierarchy, a different core count, or a memory system of a different bandwidth. Two of the mechanisms identified here depend on properties that vary more between machines than the cache sizes alone: the point at which gathering leaves the second-level cache depends on how many hardware threads share it, and the cost of memory contention at large subproblem sizes depends on the bandwidth available per thread.
 
@@ -101,6 +102,35 @@ Two of the results also rest on a modified library rather than on FINUFFT as dis
 \section{Future Work}
 \label{sec:future_work}
 
-The natural continuation of this work is to turn the balance points into predictions. Each of the parameters studied here has a cost model with the right shape -- two opposing terms whose sum has an interior minimum -- but the constants that place that minimum are properties of the machine: the cost of a cache miss at each level, the effective bandwidth available to a thread, the overhead of a subproblem. An empirical model that calibrates these constants once per machine, from a short set of measurements at known configurations, could then predict the minimising parameter values for an arbitrary input from its density, dimension, tolerance and thread count, without a search. The evidence gathered here suggests this is achievable: the subgrid-size model already predicts the measured geometry to within a percent across a wide range of configurations, the cost of the adding stage is proportional to the number of cells written with a constant that does not vary, and the transitions in the spreading and sorting stages occur where the corresponding working set crosses a known cache boundary. What remains is to fit the machine-dependent constants that connect these quantities to time, and to validate the resulting predictions against a search of the kind performed in Chapter~\ref{ch:parameter_importance} across a range of inputs and machines.
+The most direct continuation is to turn the balance points of
+Section~\ref{sec:main_findings} into predictions. For the four parameters that
+have an interior optimum, the shape of the cost is known and the quantity that
+positions it is known; what is not known is the cost of crossing each threshold,
+which depends on the machine: the penalty of a miss at each level of the cache,
+the bandwidth available to a thread when all of them are busy, and the overhead
+of starting one more subproblem. These are few enough to be calibrated once per
+machine from a short set of measurements at known configurations, after which a
+value could be predicted for an arbitrary input from its density, dimension,
+tolerance and thread count. Such a predictor would have to be validated against
+a search of the kind performed in Chapter~\ref{ch:parameter_importance}, on
+inputs and machines it was not calibrated on.
 
-A second, and prerequisite, line of work is a benchmark suite of transforms broad enough to measure whether such a model actually helps. The parameters studied here are chosen by heuristics, and a heuristic that improves the common case can quietly make some other case much worse: the search of Chapter~\ref{ch:parameter_importance} covered a single workload, and the analysis chapters show repeatedly that a parameter which barely matters at one density, dimension or thread count is decisive at another. A suite spanning those axes -- the three dimensions, densities from far below one point per cell to far above, tolerances across the usable range, single-threaded through fully-threaded, and both precisions -- run against the library defaults would give a baseline against which any proposed heuristic can be scored, reporting not only the mean improvement but the worst regression it causes. That second number is the one that matters for a library: a change that is faster on average and several times slower somewhere is not an improvement, and without a suite of this kind such a regression is only discovered by whoever runs into it.
+Doing that requires a benchmark suite broader than the one workload used here,
+spanning the three dimensionalities, densities from far below one point per cell
+to far above, the usable range of tolerances, thread counts from one to the full
+machine, and both precisions. Its purpose is not only to measure an average
+improvement but to expose the worst regression a proposed heuristic causes,
+which is the number that decides whether a library can adopt it: a rule that is
+faster on average and several times slower in one corner is not an improvement,
+and without such a suite that corner is found by whoever runs into it.
+
+Three gaps identified in Section~\ref{sec:limitations} are worth closing first.
+The models are expressed in cache sizes and thread counts but were validated on
+a single machine, so repeating the sweeps on a processor with a different cache
+hierarchy would test whether the thresholds move where the models say they
+should. Type-2 and type-3 transforms were not measured directly, although the
+first reuses the spreader in reverse and the second spends much of its time in
+\texttt{setpts}, so both may behave differently from what is reported here.
+And the two costs that the upsampling factor trades were validated separately
+rather than summed, so the value of $\sigma$ that minimises their total, and the
+gain it would offer over the value the library selects, remain to be measured.
