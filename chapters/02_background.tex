@@ -23,7 +23,7 @@ FINUFFT~\cite{barnett2019} exposes this algorithm through a three-call interface
 
 \texttt{setpts} accepts the nonuniform points. Its principal task is to sort them, which is discussed in detail below, but in recent versions it also revisits the choice of upsampling factor once the point density is known, and repeats the parts of the planning stage that depend on it if the choice changes.
 
-\texttt{execute} performs the transform in three phases. For a type 1 these are spreading the nonuniform strengths onto the fine grid, transforming that grid with the FFT, and deconvolving each mode while shuffling it into the requested output ordering. A type 2 runs the same three phases in reverse: the modes are amplified by the reciprocal kernel coefficients, an inverse FFT produces the fine grid, and the values at the nonuniform points are then interpolated from it. A type 3 is not a third algorithm but a composition of the first two, and is described separately below.
+\texttt{execute} performs the transform in three phases. For a type 1 these are spreading the nonuniform strengths onto the fine grid, transforming that grid with the FFT, and deconvolving each mode while shuffling it into the requested output ordering. A type 2 also runs three phases: the uniform inputs are amplified by the reciprocal kernel coefficients, an FFT produces the fine grid, and the values at the nonuniform modes are then interpolated from it. A type 3 is not a third algorithm but a composition of the first two, and is described separately below.
 
 \subsection{Type 3 as a composition of types 1 and 2}
 

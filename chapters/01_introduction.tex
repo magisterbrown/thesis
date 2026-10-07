@@ -53,16 +53,14 @@ subject of this thesis.
 
 \section{Problem Statement}
 
-The values FINUFFT gives its configuration parameters are not chosen for the
-transform in front of it. Most are constants written into the source and fixed
-when the library is built; a few are selected at run time by short rules that
-look at the requested tolerance or the transform type. Two of them, the
-dimensions of the boxes the points are sorted into, are not exposed to the user
-at all. These values are not arbitrary, and they encode the experience of the
+The default values FINUFFT gives its configuration parameters are not chosen for the
+specific transform. Most are just set to a constant values, which can be optionally changed. 
+One parameter, the dimensions of the boxes the points are sorted into, is not exposed to the user
+at all. Values these parameters have are not arbitrary, and they encode the experience of the
 library's authors, but they are fixed while the transforms the library is asked
 to perform are not: a call may be one-, two- or three-dimensional, may place a
 hundred points in each grid cell or one in every eight, may ask for three digits
-of accuracy or fourteen, and may run on one thread or on forty with a cache
+of accuracy or fourteen, and may run on one thread or on many with a cache
 hierarchy the authors never saw.
 
 What makes the right value hard to guess is that no parameter acts on the
@@ -131,8 +129,7 @@ The study is bounded in six ways. It examines \emph{type-1 transforms}, in which
 scattered points are spread onto a uniform grid. A type-2 transform runs the
 same machinery in reverse and inherits the mechanisms described here, but is not
 measured separately; a type-3 transform appears only in the stage breakdown of
-Chapter~\ref{ch:parameter_importance}, where it is shown to divide its time
-differently because much of its work falls in \texttt{setpts}. All three
+Chapter~\ref{ch:parameter_importance}. All three
 \emph{dimensionalities} are covered, with the two-dimensional case used as the
 reference workload. The measurements are in \emph{double precision}, except in
 Chapter~\ref{ch:sigma_selection}, where the cost of the FFT and of the spreading
@@ -159,10 +156,8 @@ upsampling factor, so every configuration compared here meets the same error
 target, and accuracy enters as a constraint on which configurations are
 admissible rather than as a quantity to be traded against speed.
 
-Finally, the thesis \emph{explains and predicts rather than tunes}. It does not
-deliver an automatic parameter selector, and no change to FINUFFT's own
-heuristics is proposed or evaluated. What it provides instead are the cost
-models, the thresholds and the measured constants from which such a selector
+Finally, the thesis provides the cost
+models, the thresholds and the measured constants from which automatic parameter selector
 could be built, and Chapter~\ref{ch:conclusion} sets out what would remain to be
 done.
 
@@ -183,10 +178,10 @@ This thesis addresses three questions.
     decide which of the two prevails.
 
     \item \textbf{Which of those costs can be written in closed form accurately
-    enough to choose a value without measuring it?} An answer distinguishes what
-    such a model predicts -- an absolute cost, an ordering of candidate values,
-    or only the location of a threshold -- from what must still be measured on
-    the machine at hand.
+    enough to choose a value without measuring it?} An answer states how far
+    each model reaches: whether it predicts an absolute cost, only the ordering
+    of candidate values, or only the point at which a trend changes, with the
+    steepness on either side left to be measured on the machine at hand.
 \end{enumerate}
 
 \section{Contributions}
@@ -200,8 +195,7 @@ reproduce part of what those measurements show.
     \item \textbf{A method for attributing cost to the stages inside a parallel
     region.} Gathering, spreading kernel evaluation and adding are executed
     concurrently by every thread, so no timer placed outside the library can
-    separate them. They are separated here in two ways: by timers placed inside
-    the region and read by the thread that runs each stage, and by attributing
+    separate them. They are measured by attributing
     sampled processor cycles to the functions that implement them. Hardware
     performance counters recorded alongside allow an effect to be traced both to
     the stage it acts on and to its cause -- cache capacity, contention for
@@ -225,7 +219,7 @@ reproduce part of what those measurements show.
     the library defaults.
 
     \item \textbf{An account of the trade-offs the spreader parameters govern.}
-    The point density decides whether gathering or adding sets the best
+    The point density affects whether gathering or adding sets the best
     subproblem size; the sort bin dimensions act on three stages through three
     different quantities, the sort through the size of its counter array against
     the first-level cache, spreading through the area a bin covers against the

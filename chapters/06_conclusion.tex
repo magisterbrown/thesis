@@ -15,17 +15,9 @@ stages.
 
 
 Each parameter moves the total, and there are two kinds of parameters. 
-Four of them -- the upsampling factor,
-the maximum subproblem size and the two bin dimensions -- reduce the cost of one
-stage only by raising the cost of another, so the cost as a function of the
-parameter is a sum of two opposing terms and the best value lies where they
-balance rather than at either extreme. The remaining two do not balance two
+Four of them -- the upsampling factor, the maximum subproblem size and the two bin dimensions -- reduce the cost of one stage only by raising the cost of another. The cost as a function of such a parameter is a sum of two opposing terms, so the best value lies where they balance rather than at either extreme. The remaining two do not balance two
 stages against each other. Sorting is a binary choice, and it should be enabled
-for any input of a realistic size. The synchronisation threshold is an integer
-that may take any value, but the library compares it with the thread count and
-nothing else, so all it selects is which of two implementations of the adding
-stage is used: a critical section when the thread count does not exceed it, and
-atomic updates when it does. Its effect is therefore a step rather than a
+for any input of a realistic size. The synchronisation threshold is an integer that may take any value, but the library compares it with the thread count and nothing else. All it selects is which of two implementations of the adding stage runs: a critical section when the thread count does not exceed it, atomic updates when it does. Its effect is therefore a step rather than a
 balance, and only its position relative to the thread count matters. Which side
 of that step is faster reverses with the thread count itself: below roughly ten
 threads the critical section wins, above it the atomic updates do.
@@ -36,79 +28,47 @@ decides how large a region a subproblem's points cover, and so whether writing a
 subgrid or filling it dominates. The requested tolerance affects the kernel width,
 and with it both the work per point and the padding around every subgrid. The
 dimension multiplies that padding along every axis. The thread count changes how
-fraction of l3 cache each thread has and how many threads contend for memory at once. The
-thresholds these produce are sharp and can be located with experiments: gathering
-doubles in cost once the staging buffer outgrows a thread's share of the
-second-level cache, which at $32$ bytes per point is $4096$ points in two
-dimensions; the sort reaches its floor once its counter array fits in the
-first-level cache; and spreading leaves its flat regime once the region a bin
-covers no longer fits there. The distances involved are not small. For the
+fraction of l3 cache each thread has and how many threads contend for memory at once. The thresholds these produce are sharp, and each can be located in advance. Gathering doubles in cost once the staging buffer outgrows a thread's share of the second-level cache, which at $32$ bytes per point is $4096$ points in two dimensions. The sort reaches its floor once its counter array fits in the first-level cache, and spreading leaves its flat regime once the region a bin covers no longer fits there. The distances involved are not small. For the
 reference transform the constant the library selects for the subproblem size
 costs $1.44$ times the best value measured, and the synchronisation choice,
 worth nothing at that constant, is worth up to a third of the run time once the
 subproblem size is tuned.
 
 The behaviour therefore separates into a part that can be predicted and a part
-that must be measured. What follows from the geometry of the grids is
-predictable: the average size of the subgrid a given subproblem size and bin
-shape produce is derived in closed form and matches measurement to within one
-percent, and because the adding stage costs a fixed number of cycles per cell
-written, that model predicts the cost of the stage for configurations never run.
+that must be measured. What follows from the geometry of the grids is predictable. The average size of the subgrid a given subproblem size and bin shape produce is derived in closed form and matches measurement to within one percent. The adding stage costs a fixed number of cycles per cell written, so that model also predicts the cost of the stage for configurations never run.
 The cost of spreading as a function of the upsampling factor is reproduced in
-all three dimensions. What follows from the memory hierarchy is predictable only
-in part: the position of each threshold follows from a cache size, but the cost
-of crossing it does not, and the model of the FFT holds only for transforms
-whose fine grid exceeds the last-level cache, below which a fixed per-call
-overhead dominates.
+all three dimensions. What follows from the memory hierarchy is predictable only in part. The position of each threshold follows from a cache size, but the cost of crossing it does not. The model of the FFT is narrower still, holding only for transforms whose fine grid exceeds the last-level cache; below that a fixed per-call overhead dominates.
 
 \section{Answers to the Research Questions}
 \label{sec:rq_answers}
 
 \paragraph{RQ1: Which of FINUFFT's configuration parameters affect performance?}
-Six of the options the library carries reach the stages in which the time is
-spent, and all six change the execution time measurably, but not by comparable
-amounts. Whether the points are sorted dominates every other effect; among
-configurations that sort, the upsampling factor and the two bin dimensions
-together account for almost all of the remaining variation, and the maximum
-subproblem size and the synchronisation threshold for a few percent between
-them. The two smallest shares are the least transferable of the five: both
-parameters act only on the spreading stage, so their contribution to the total
-falls as the FFT grows
+Six of the options the library carries reach the stages in which the time is spent, and all six change the execution time of a transform: whether the nonuniform points are sorted (\texttt{spread\_sort}), the upsampling factor (\texttt{upsampfac}), the maximum number of points in a spreading subproblem (\texttt{spread\_max\_sp\_size}), the thread count above which the adding stage switches from a critical section to atomic updates (\texttt{spread\_nthr\_atomic}), and the dimensions of the boxes into which the points are sorted ($b_x$, $b_y$, $b_z$), which the released library fixes at compile time. Section~\ref{sec:main_findings} gives the share of the variation that each accounts for. 
 
 \paragraph{RQ2: Through which mechanism does each of those parameters act, and
 what fixes the point at which its trade-off balances?} 
-Every parameter studied speeds up one stage and slows another, so each has an interior optimum. The upsampling factor trades spreading against the FFT: raising $\sigma$ narrows the kernel, making spreading cheaper, and enlarges the fine grid the FFT must transform (Chapter~\ref{ch:sigma_selection}). The maximum subproblem size trades gathering against adding (Chapter~\ref{ch:parameter_tuning}). Adding falls as subproblems grow, because the padding of every subgrid is paid once per subproblem; gathering rises once the per-thread staging buffer no longer fits in that thread's share of L2, because its writes then occupy line-fill buffers for a full memory round trip. The sort bin dimensions act on three stages through three quantities: the sort through the size of its per-thread counter array against L1, spreading through the padded region a bin covers against L1 and L2, and adding through the size of the subgrids the resulting point order produces. Where each balance lies depends on point density, which decides how large a region a subproblem's points cover; on the tolerance, which sets the kernel width and with it the padding; on dimension, which multiplies that padding along every axis; on the thread count, since gathering slows down only when many threads compete for memory; and on the cache sizes, which set the thresholds above.
+Every parameter studied speeds up one stage and slows another, so each has an interior optimum. The upsampling factor trades spreading against the FFT: raising $\sigma$ narrows the kernel, making spreading cheaper, and enlarges the fine grid the FFT must transform (Chapter~\ref{ch:sigma_selection}). The maximum subproblem size trades gathering against adding (Chapter~\ref{ch:parameter_tuning}). Adding falls as subproblems grow, because the padding of every subgrid is paid once per subproblem; gathering rises once the per-thread staging buffer no longer fits in that thread's share of L2, because its writes then occupy line-fill buffers for a full memory round trip. The sort bin dimensions act on three stages through three quantities: the sort through the size of its per-thread counter array against L1, spreading through the padded region a bin covers against L1 and L2, and adding through the size of the subgrids the resulting point order produces. Where each balance lies is fixed by four properties of the problem and one of the machine. The point density decides how large a region a subproblem's points cover. The tolerance sets the kernel width, and with it the padding around every subgrid, which the dimension then multiplies along every axis. The thread count decides how many threads compete for memory, since gathering slows down only when many of them do. And the cache sizes set the thresholds above.
 
 \paragraph{RQ3: Which of those costs can be written in closed form accurately
-enough to choose a value without measuring it?} Those that follow from the
-geometry of the grids can. The subgrid a configuration produces is predicted to
+enough to choose a value without measuring it?} The subgrid a configuration produces is predicted to
 within a percent, and with it the cost of the adding stage, which is
 proportional to the cells written; the cost of spreading as a function of the
-upsampling factor is reproduced in all three dimensions. Those that follow from
-the memory hierarchy can be located but not evaluated: the value of a parameter
-at which a working set leaves a cache level is given by the capacity of that
-level, while the cost of crossing it is not, and must be measured once on the
-machine. The model of the FFT cost is the weakest of the three, holding only
+upsampling factor is reproduced in all three dimensions. Those that follow from the memory hierarchy can be located but not evaluated. Three such thresholds were identified, and each is given by the capacity of a cache level divided by the bytes the stage holds per unit of the parameter: the maximum subproblem size at which the staging buffer outgrows a thread's share of the second-level cache;  the bin dimensions at which the counter array the sort keeps per thread no longer fits in the first-level cache; and the bin dimensions at which the region a bin covers, padded by the kernel width, leaves that same cache and then the second level. What the capacity does not give is the cost of crossing each threshold, which must be measured once on the machine. The model of the FFT cost is the weakest of the three, holding only
 where the fine grid exceeds the last-level cache.
 
 \section{Limitations}
 \label{sec:limitations}
 
-The measurements throughout were taken on one machine, the Intel Xeon E5-2698 v4 of Section~\ref{sec:platform}, and the thresholds that turn out to matter most are expressed in terms of its cache sizes. The models are written in terms of those sizes rather than in absolute numbers, so they transfer in principle, but this was not verified on hardware with a different cache hierarchy, a different core count, or a memory system of a different bandwidth. Two of the mechanisms identified here depend on properties that vary more between machines than the cache sizes alone: the point at which gathering leaves the second-level cache depends on how many hardware threads share it, and the cost of memory contention at large subproblem sizes depends on the bandwidth available per thread.
+The measurements throughout were taken on one machine, the Intel Xeon E5-2698 v4 of Section~\ref{sec:platform}, and the thresholds that turn out to matter most are expressed in terms of its cache sizes. The models are written in terms of those sizes rather than in absolute numbers, so they transfer in principle, but this was not verified on hardware with a different cache hierarchy, a different core count, or a memory system of a different bandwidth. Two of the mechanisms identified here depend on more than the cache sizes alone. The point at which gathering leaves the second-level cache depends on how many hardware threads share it, and the cost of memory contention at large subproblem sizes depends on the bandwidth available to each thread.
 
 The parameter search of Chapter~\ref{ch:parameter_importance} likewise covers a single workload; its ranking of the parameters is specific to that workload, and the analysis chapters show directly that a parameter which is insensitive at one density and thread count is decisive at another. The analyses concentrate on type-1 transforms in double precision, since that is the path the spreader takes; type-2 interpolation reuses the same subproblem structure but was not measured separately, and type~3 was not examined beyond the stage breakdown.
 
-Two of the results also rest on a modified library rather than on FINUFFT as distributed. The dimensions of the sort bins are compile-time constants, so they were exposed as run-time options in order to be swept at all; a user of the released library cannot set them, and the gains attributed to them in Chapter~\ref{ch:parameter_importance} are therefore only available through a patch or a future release that exposes them. 
+Two of the results also rest on a modified library rather than on FINUFFT as distributed. The dimensions of the sort bins are compile-time constants, so they were exposed as run-time options in order to be swept at all. A user of the released library cannot set them, and the gains attributed to them in Chapter~\ref{ch:parameter_importance} are therefore available only through a patch, or through a future release that exposes them. 
 \section{Future Work}
 \label{sec:future_work}
 
 The most direct continuation is to turn the balance points of
-Section~\ref{sec:main_findings} into predictions. For the four parameters that
-have an interior optimum, the shape of the cost is known and the quantity that
-positions it is known; what is not known is the cost of crossing each threshold,
-which depends on the machine: the penalty of a miss at each level of the cache,
-the bandwidth available to a thread when all of them are busy, and the overhead
-of starting one more subproblem. These are few enough to be calibrated once per
+Section~\ref{sec:main_findings} into predictions. For the four parameters that have an interior optimum, both the shape of the cost and the quantity that positions it are known. What is not known is the cost of crossing each threshold, which depends on the machine: the penalty of a miss at each level of the cache, the bandwidth available to a thread when all of them are busy, and the overhead of starting one more subproblem. These are few enough to be calibrated once per
 machine from a short set of measurements at known configurations, after which a
 value could be predicted for an arbitrary input from its density, dimension,
 tolerance and thread count. Such a predictor would have to be validated against
@@ -118,11 +78,7 @@ inputs and machines it was not calibrated on.
 Doing that requires a benchmark suite broader than the one workload used here,
 spanning the three dimensionalities, densities from far below one point per cell
 to far above, the usable range of tolerances, thread counts from one to the full
-machine, and both precisions. Its purpose is not only to measure an average
-improvement but to expose the worst regression a proposed heuristic causes,
-which is the number that decides whether a library can adopt it: a rule that is
-faster on average and several times slower in one corner is not an improvement,
-and without such a suite that corner is found by whoever runs into it.
+machine, and both precisions. Its purpose is not only to measure an average improvement but to expose the worst regression a proposed heuristic causes. That is the number which decides whether a library can adopt it: a rule that is faster on average and several times slower in one corner is not an improvement, and without such a suite that corner is found by whoever runs into it.
 
 Three gaps identified in Section~\ref{sec:limitations} are worth closing first.
 The models are expressed in cache sizes and thread counts but were validated on
