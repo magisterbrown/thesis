@@ -7,7 +7,7 @@ dimension (44.7M in 1D, 33.6M in 2D, 26.8M in 3D) and the grid follows from the
 density as N = M / rho. Runs use spreadinterponly, and the cycles spent in each
 step are separated by symbol with perf. A "case" is one combination of
 dimension, point density and thread count; within a case the subproblem size is
-swept from 10^4 up to M/nthr, and the cycles spent gathering, spreading and
+swept from 10^4 up to M/nthr, and the cycles spent gathering and
 adding are recorded separately.
 
 Rows of the grid are densities, columns are (dimension, thread count), so
@@ -36,7 +36,6 @@ from matplotlib.lines import Line2D
 
 GATHER, SPREAD, ADD = "#2a78d6", "#eb6834", "#1baf7a"
 STEPS = (("gather_cycles", GATHER, "gathering"),
-         ("spread_cycles", SPREAD, "spreading"),
          ("add_cycles", ADD, "adding"))
 # 8-thread runs are in the CSV but not drawn: they sit between the two limits
 # and add a column without adding an argument
@@ -68,6 +67,16 @@ def main():
                              figsize=(2.5 * len(cols), 2.1 * len(densities)),
                              squeeze=False)
 
+    # one y scale per row, so panels in the same row can be compared directly;
+    # the scale still differs between rows, where the densities put the cycle
+    # counts orders of magnitude apart
+    row_limits = []
+    for rho in densities:
+        vals = [float(p[key]) for (dim, thr) in cols
+                for p in cases.get((dim, thr, rho), [])
+                for key, _, _ in STEPS if float(p[key]) > 0]
+        row_limits.append((min(vals) / 1.6, max(vals) * 1.6) if vals else None)
+
     for i, rho in enumerate(densities):
         for j, (dim, thr) in enumerate(cols):
             ax = axes[i][j]
@@ -80,6 +89,10 @@ def main():
                         "-o", ms=2.5, lw=1.3, color=c)
             ax.set_xscale("log")
             ax.set_yscale("log")
+            if row_limits[i]:
+                ax.set_ylim(*row_limits[i])
+            if j > 0:
+                ax.tick_params(labelleft=False)
             ax.tick_params(labelsize=6)
             ax.grid(True, ls=":", lw=0.5, alpha=0.6)
             ax.set_axisbelow(True)

@@ -25,10 +25,10 @@ threads the critical section wins, above it the atomic updates do.
 Where those balance points lie is a property of the problem and of the machine,
 not of the library, and the quantities that fix them are few. The point density
 decides how large a region a subproblem's points cover, and so whether writing a
-subgrid or filling it dominates. The requested tolerance affects the kernel width,
+subgrid or filling subproblem buffer with points dominates. The requested tolerance affects the kernel width,
 and with it both the work per point and the padding around every subgrid. The
 dimension multiplies that padding along every axis. The thread count changes how
-fraction of l3 cache each thread has and how many threads contend for memory at once. The thresholds these produce are sharp, and each can be located in advance. Gathering doubles in cost once the staging buffer outgrows a thread's share of the second-level cache, which at $32$ bytes per point is $4096$ points in two dimensions. The sort reaches its floor once its counter array fits in the first-level cache, and spreading leaves its flat regime once the region a bin covers no longer fits there. The distances involved are not small. For the
+fraction of l3 cache each thread has and how many threads contend for memory at once. The thresholds these produce are sharp, and each can be located in advance. Gathering doubles in cost once the staging buffer outgrows a thread's share of the second-level cache. The sort reaches its floor once its counter array fits in the first-level cache, and spreading leaves its flat regime once the region a bin covers no longer fits there. The distances involved are not small. For the
 reference transform the constant the library selects for the subproblem size
 costs $1.44$ times the best value measured, and the synchronisation choice,
 worth nothing at that constant, is worth up to a third of the run time once the
