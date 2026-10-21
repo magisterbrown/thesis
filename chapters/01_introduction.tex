@@ -126,9 +126,12 @@ threads and the sizes of the caches they share -- rather than found by trying
 values and keeping the fastest.
 
 The study is bounded in six ways. It examines \emph{type-1 transforms}, in which
-scattered points are spread onto a uniform grid. A type-2 transform runs the
-same machinery in reverse and inherits the mechanisms described here, but is not
-measured separately; a type-3 transform appears only in the stage breakdown of
+scattered points are spread onto a uniform grid. A type-2 transform shares the
+point sort, the upsampling factor and the FFT, but replaces spreading by
+interpolation: each point reads its neighbourhood directly from the shared fine
+grid, so there are no subproblems, no private subgrids and no adding stage, and
+the maximum subproblem size and the atomic-update threshold have no counterpart.
+Type-2 transforms are not measured; a type-3 transform appears only in the stage breakdown of
 Chapter~\ref{ch:parameter_importance}. All three
 \emph{dimensionalities} are covered, with the two-dimensional case used as the
 reference workload. The measurements are in \emph{double precision}, except in
