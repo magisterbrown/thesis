@@ -333,8 +333,33 @@ The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{t
 Before spreading, FINUFFT sorts all points into bins with an incomplete histogram sort. Sorting is incomplete in the sense that points are grouped into bins but left in arbitrary order within a bin, which is enough to give the spreader most of the cache locality of a full sort at a fraction of its cost: the histogram sort runs in $O(n)$ time and $O(n_{\mathrm{bins}})$ space, against $O(n \log n)$ for a comparison sort. Figure~\ref{fig:binsort_locality} shows three levels of sorting applied to the same point set -- none at all, coarse bins and FINUFFT's default bins -- with each point coloured by its position in the array the spreader then reads.
 
 By default, FINUFFT uses boxes of $16$ grid points along the fast $x$ axis and, in two or three dimensions, $4$ points along the slower $y$ and $z$ axes. These sizes are fixed in the library, but nothing about the algorithm requires them, and the rest of this section measures what they cost.
+\subsection{Binsize effect on memory}
 
-The sort itself makes two passes over the points: the first counts how many fall into each bin, and the second writes each point's index into the slot its bin has been given. Nothing else is touched apart from an array of $n_{\mathrm{bins}}$ counters held privately by each thread, so the cost is governed by whether that array stays in cache rather than by how many points are being sorted. Table~\ref{tab:binsort_cost} shows the consequence: sorting reaches its fastest, about $4.5$ Gcycles per transform, once the counter array has fallen well inside the L1 data cache, which happens at a bin of $384\times96$, and coarser bins bring no further gain. The array first fits at $128\times32$, but sorting still pays $6.4$ Gcycles there, so the approach to the floor is gradual rather than sharp. The default $16\times4$ leaves $526{,}000$ bins and a $2.1$\,MB counter array per thread, and pays $26.5$ Gcycles for it, nearly six times the floor.
+The bin size pulls the two stages in opposite directions. In the spreading stage a smaller bin means a smaller subgrid: the bin enters Equation~\eqref{eq:subgrid_per_point} through the slack term $(b + w)/S_{\max}$, and Equations~\eqref{eq:subgrid_2d} and~\eqref{eq:subgrid_3d} in the same way through the bin rows, so with smaller bins each point brings fewer subgrid cells with it and the add step moves less data. The sort pays for this. The grid is cut into
+\begin{equation}
+    n_{\mathrm{bins}} = \prod_{i=1}^{d} \bigl(\lfloor N_i / b_i \rfloor + 1\bigr)
+    \label{eq:nbins}
+\end{equation}
+bins, so halving every side of a bin multiplies their number by $2^d$, and the sort keeps state for every one of them. Each of its $n_t$ threads holds a private histogram of $n_{\mathrm{bins}}$ four-byte counters, $L_c = \lceil 4 n_{\mathrm{bins}} / 64 \rceil$ lines, and goes over its share of the points twice: a counting pass that increments the counter of each point's bin, and a placement pass that writes the point's index to the next free slot of that bin in the output array \texttt{ret}. The bins of consecutive points are random, so both passes touch the histogram at random. In the placement pass every bin also has an open line of \texttt{ret} being filled, eight eight-byte indices to a line. While the histogram and the open lines fit in the thread's share of the L3 cache, $C_3$, the sort streams the coordinates and writes \texttt{ret} once; once they do not, a counter line or an open \texttt{ret} line is evicted before the bin comes round again, and each such miss costs a DRAM read and a write-back. On the reference transform the default $16 \times 4$ bins cut the $6750^2$ fine grid into $712{,}000$ bins, a histogram of $2.85$\,MB per thread against $C_3 = 2.5$\,MB on $20$ threads, so the sort is already past that point.
+
+The traffic can be estimated in the same terms as that of the spreading stage. A counter line is reused when a later point falls into one of the bins it holds; with bins drawn at random, the number of points between two uses of the same line is geometric with mean $L_c$. In the meantime the thread streams $c = d \cdot \texttt{sizeof(FLT)} / 64$ coordinate lines per point and touches $L_c(1 - e^{-n/L_c})$ distinct counter lines after $n$ points, so the line survives if fewer than $K = C_3 / 64$ lines have been touched in between. Writing $n^{*}$ for the gap at which the footprint reaches $K$, the probability that a counter access misses is
+\begin{equation}
+    P_c = e^{-n^{*}/L_c}, \qquad L_c\bigl(1 - e^{-n^{*}/L_c}\bigr) + c\, n^{*} = K,
+    \label{eq:sort_counts_miss}
+\end{equation}
+for the counting pass, $P_{c1}$, and with the open \texttt{ret} lines added to the footprint, $+\, n_{\mathrm{bins}}(1 - e^{-n^{*}/n_{\mathrm{bins}}})$ on the left, for the placement pass, $P_{c2}$. The open \texttt{ret} lines are shared by all threads through the L3 cache, so whether they survive is decided by their total number against the whole cache: at most one per bin and thread, and never more than \texttt{ret} has lines,
+\begin{equation}
+    P_{\mathrm{ret}} = \max\Bigl(0,\ 1 - \frac{C_3 n_t / 64}{\min(n_t n_{\mathrm{bins}},\ M / 8) + n_t L_c}\Bigr).
+    \label{eq:sort_ret_miss}
+\end{equation}
+Together with the compulsory traffic, the coordinates read once by each pass and one line of \texttt{ret} written for every eight points, and with the passes that zero the histograms and turn them into offsets, $\kappa = (2 n_t + 1) L_c / M$ lines per point, the sort reads and writes
+\begin{align}
+    \mathrm{reads}  &= 2c + P_{c1} + P_{c2} + \tfrac{1}{8} + \tfrac{7}{8} P_{\mathrm{ret}} + \kappa, \label{eq:sort_reads}\\
+    \mathrm{writes} &= P_{c1} + P_{c2} + \tfrac{1}{8} + \tfrac{7}{8} P_{\mathrm{ret}} + \kappa \label{eq:sort_writes}
+\end{align}
+lines per nonuniform point, where a missed \texttt{ret} line costs $7/8$ of a line because the one line per eight points that is filled completely is already counted. While the bins are few, $P_{c1}$, $P_{c2}$ and $P_{\mathrm{ret}}$ are zero and the sort costs little more than one pass over the coordinates; as the bins shrink, the histogram and then the open lines outgrow $C_3$, and every point adds up to three missed lines in each direction. A bin size therefore trades the add traffic of Equations~\eqref{eq:spread_reads} and~\eqref{eq:spread_writes}, which falls as the bins shrink, against the sort traffic of Equations~\eqref{eq:sort_reads} and~\eqref{eq:sort_writes}, which rises.
+
+%The sort itself makes two passes over the points: the first counts how many fall into each bin, and the second writes each point's index into the slot its bin has been given. Nothing else is touched apart from an array of $n_{\mathrm{bins}}$ counters held privately by each thread, so the cost is governed by whether that array stays in cache rather than by how many points are being sorted. Table~\ref{tab:binsort_cost} shows the consequence: sorting reaches its fastest, about $4.5$ Gcycles per transform, once the counter array has fallen well inside the L1 data cache, which happens at a bin of $384\times96$, and coarser bins bring no further gain. The array first fits at $128\times32$, but sorting still pays $6.4$ Gcycles there, so the approach to the floor is gradual rather than sharp. The default $16\times4$ leaves $526{,}000$ bins and a $2.1$\,MB counter array per thread, and pays $26.5$ Gcycles for it, nearly six times the floor.
 
 \begin{figure}[h]
     \centering
@@ -344,95 +369,171 @@ The sort itself makes two passes over the points: the first counts how many fall
 \end{figure}
 
 
-The bin dimensions do not only affect sorting, however; it also reaches the spreading and adding stages downstream. Because points keep an arbitrary order inside a bin, a subproblem's writes are scattered over the whole grid region the bin covers, so the working set spreading holds at any moment is the subgrid those points are written into: the region the bin covers, enlarged by half a kernel width on each side so that a point at the edge can deposit its full $w^d$ neighbourhood, which is $16\,(b_x + w)(b_y + w)$ bytes at one complex double per cell. The region is written repeatedly while a bin is being consumed, so what matters is whether it fits in the core local cache. Table~\ref{tab:spread_l2} shows the performance change. While the padded bin stays inside L1d, spreading is flat at $3.7$--$4.1$ Gcycles and its L1 line fills sit at a floor between $0.03$ and $0.09\times10^9$, unchanged over an eighteenfold range of padded bin area. Once the region no longer fits, every write starts pulling a line and the fills climb from $0.031\times10^9$ at the default $16\times4$ to $0.69\times10^9$. Over $96\times24$ and $128\times32$ the growth is entirely L1: the L1 fills rise by $0.35\times10^9$ while the L2 fills stay at their own floor near $0.035\times10^9$, and spreading gains only $0.47$ Gcycles, about $1.4$ per additional fill, because each miss is served by L2 and never reaches memory. From $192\times48$ the padded bin exceeds L2 as well. The L2 fills then rise eighteenfold to $0.63\times10^9$ and spreading climbs from $4.5$ to $55.6$ Gcycles. The first regime is therefore mild and the second is not: an L1 miss costs a few cycles, an L2 miss costs an order of magnitude more, and a bin large enough to overflow both is penalised by each in succession. The second regime is not uniform either. Between $256\times64$ and $512\times128$ each additional L2 fill costs under $5$ cycles, whereas over the last two rows spreading more than quintuples for a further $0.13\times10^9$ fills alone, so at the top of the range its cost is no longer explained by L2 traffic by itself.
+%The bin dimensions do not only affect sorting, however; it also reaches the spreading and adding stages downstream. Because points keep an arbitrary order inside a bin, a subproblem's writes are scattered over the whole grid region the bin covers, so the working set spreading holds at any moment is the subgrid those points are written into: the region the bin covers, enlarged by half a kernel width on each side so that a point at the edge can deposit its full $w^d$ neighbourhood, which is $16\,(b_x + w)(b_y + w)$ bytes at one complex double per cell. The region is written repeatedly while a bin is being consumed, so what matters is whether it fits in the core local cache. Table~\ref{tab:spread_l2} shows the performance change. While the padded bin stays inside L1d, spreading is flat at $3.7$--$4.1$ Gcycles and its L1 line fills sit at a floor between $0.03$ and $0.09\times10^9$, unchanged over an eighteenfold range of padded bin area. Once the region no longer fits, every write starts pulling a line and the fills climb from $0.031\times10^9$ at the default $16\times4$ to $0.69\times10^9$. Over $96\times24$ and $128\times32$ the growth is entirely L1: the L1 fills rise by $0.35\times10^9$ while the L2 fills stay at their own floor near $0.035\times10^9$, and spreading gains only $0.47$ Gcycles, about $1.4$ per additional fill, because each miss is served by L2 and never reaches memory. From $192\times48$ the padded bin exceeds L2 as well. The L2 fills then rise eighteenfold to $0.63\times10^9$ and spreading climbs from $4.5$ to $55.6$ Gcycles. The first regime is therefore mild and the second is not: an L1 miss costs a few cycles, an L2 miss costs an order of magnitude more, and a bin large enough to overflow both is penalised by each in succession. The second regime is not uniform either. Between $256\times64$ and $512\times128$ each additional L2 fill costs under $5$ cycles, whereas over the last two rows spreading more than quintuples for a further $0.13\times10^9$ fills alone, so at the top of the range its cost is no longer explained by L2 traffic by itself.
 
-In terms of the Roofline model (Section~\ref{sec:related_perf}), spreading is compute-bound while the padded bin fits in L1d: its arithmetic per point is fixed by the kernel width, and its cost is flat regardless of the bin dimensions. A larger bin does not change that arithmetic, but it moves the data the arithmetic works on down the hierarchy, so the stage falls first under the roof set by L2 bandwidth and then under the one set by memory. The practical consequence is that bin area should fit into some level of cache hierarchy to preserve memory locality.
+%In terms of the Roofline model (Section~\ref{sec:related_perf}), spreading is compute-bound while the padded bin fits in L1d: its arithmetic per point is fixed by the kernel width, and its cost is flat regardless of the bin dimensions. A larger bin does not change that arithmetic, but it moves the data the arithmetic works on down the hierarchy, so the stage falls first under the roof set by L2 bandwidth and then under the one set by memory. The practical consequence is that bin area should fit into some level of cache hierarchy to preserve memory locality.
 
-Finally, the bin dimensions set the size of the subgrids, through the formulas already derived in \eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and \eqref{eq:subgrid_3d}, where it enters as $b$ along the single axis in one dimension and as $b_x$, $b_y$ and $b_z$ in two and three. Larger bins make larger subgrids, and \texttt{add\_wrapped\_subgrid} has to write out every cell of one, so adding slows down accordingly. Table~\ref{tab:binsize_subgrid} confirms both halves of this: the measured mean subgrid area follows \eqref{eq:subgrid_2d} across the range, and adding costs a nearly constant number of cycles per subgrid cell, about $57$ over the middle of the range, so most of its growth is the growth of the subgrids. The constant is not perfectly flat. The three smallest bins pay about $65$ cycles per cell and the largest $69$, so the two ends of the range carry a cost that subgrid volume alone does not account for.
+%Finally, the bin dimensions set the size of the subgrids, through the formulas already derived in \eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and \eqref{eq:subgrid_3d}, where it enters as $b$ along the single axis in one dimension and as $b_x$, $b_y$ and $b_z$ in two and three. Larger bins make larger subgrids, and \texttt{add\_wrapped\_subgrid} has to write out every cell of one, so adding slows down accordingly. Table~\ref{tab:binsize_subgrid} confirms both halves of this: the measured mean subgrid area follows \eqref{eq:subgrid_2d} across the range, and adding costs a nearly constant number of cycles per subgrid cell, about $57$ over the middle of the range, so most of its growth is the growth of the subgrids. The constant is not perfectly flat. The three smallest bins pay about $65$ cycles per cell and the largest $69$, so the two ends of the range carry a cost that subgrid volume alone does not account for.
 
 \begin{table}[h]
     \centering
-    \scriptsize
-    \setlength{\tabcolsep}{2pt}
-    \begin{subtable}[t]{0.26\textwidth}
-        \centering
-        \begin{tabular}{rrrr}
-            \hline
-            bin & $n_{\mathrm{bins}}$ & /L1d & Gcyc \\
-            \hline
-            $4\times1$ & 8.4M & 1025 & 55.70 \\
-            $8\times2$ & 2.1M & 256 & 42.49 \\
-            $16\times4$ & 526k & 64.2 & 26.50 \\
-            $32\times8$ & 132k & 16.1 & 15.51 \\
-            $48\times12$ & 58k & 7.13 & 11.57 \\
-            $64\times16$ & 33k & 4.03 & 8.33 \\
-            $96\times24$ & 15k & 1.80 & 6.97 \\
-            $128\times32$ & 8372 & 1.02 & 6.42 \\
-            $192\times48$ & 3751 & 0.46 & 5.51 \\
-            $256\times64$ & 2093 & 0.26 & 5.03 \\
-            $384\times96$ & 976 & 0.12 & 4.66 \\
-            $512\times128$ & 552 & 0.07 & 4.68 \\
-            $768\times192$ & 248 & 0.03 & 4.24 \\
-            $1024\times256$ & 138 & 0.02 & 4.44 \\
-            \hline
-        \end{tabular}
-        \caption{Sorting: the number of bins and the per-thread count array against L1d, with the cycles the sort takes.}
-        \label{tab:binsort_cost}
-    \end{subtable}
-    \hfill
-    \begin{subtable}[t]{0.42\textwidth}
-        \centering
-        \begin{tabular}{rrrrrr}
-            \hline
-            bin & /L1d & /L2 & Gcyc & L1 miss & L2 miss \\
-            \hline
-            $4\times1$ & 0.04 & 0.01 & 3.70 & 0.086 & 0.083 \\
-            $8\times2$ & 0.07 & 0.01 & 3.83 & 0.058 & 0.055 \\
-            $16\times4$ & 0.12 & 0.02 & 3.97 & 0.031 & 0.041 \\
-            $32\times8$ & 0.29 & 0.04 & 4.03 & 0.037 & 0.033 \\
-            $48\times12$ & 0.51 & 0.06 & 4.05 & 0.062 & 0.031 \\
-            $64\times16$ & 0.80 & 0.10 & 4.04 & 0.057 & 0.030 \\
-            $96\times24$ & 1.56 & 0.19 & 4.25 & 0.260 & 0.033 \\
-            $128\times32$ & 2.57 & 0.32 & 4.51 & 0.404 & 0.036 \\
-            $192\times48$ & 5.34 & 0.67 & 5.80 & 0.551 & 0.078 \\
-            $256\times64$ & 9.12 & 1.14 & 8.18 & 0.613 & 0.157 \\
-            $384\times96$ & 19.7 & 2.46 & 9.38 & 0.631 & 0.400 \\
-            $512\times128$ & 34.2 & 4.28 & 9.82 & 0.659 & 0.505 \\
-            $768\times192$ & 75.3 & 9.41 & 16.07 & 0.668 & 0.590 \\
-            $1024\times256$ & 132.4 & 16.5 & 55.55 & 0.686 & 0.634 \\
-            \hline
-        \end{tabular}
-        \caption{Spreading: the bin dimensions against the cycles, and the L1 and L2 miss rates.}
-        \label{tab:spread_l2}
-    \end{subtable}
-    \hfill
-    \begin{subtable}[t]{0.29\textwidth}
-        \centering
-        \begin{tabular}{rrrr}
-            \hline
-            bin & subgrid & Gcyc & cyc/cell \\
-            \hline
-            $4\times1$ & 146k & 3.17 & 64.4 \\
-            $8\times2$ & 152k & 3.39 & 66.4 \\
-            $16\times4$ & 164k & 3.56 & 64.6 \\
-            $32\times8$ & 187k & 3.63 & 57.8 \\
-            $48\times12$ & 210k & 4.10 & 58.0 \\
-            $64\times16$ & 233k & 4.47 & 57.1 \\
-            $96\times24$ & 266k & 5.10 & 57.1 \\
-            $128\times32$ & 280k & 5.44 & 57.9 \\
-            $192\times48$ & 294k & 5.74 & 58.2 \\
-            $256\times64$ & 304k & 5.80 & 56.8 \\
-            $384\times96$ & 325k & 6.20 & 56.7 \\
-            $512\times128$ & 353k & 6.68 & 56.4 \\
-            $768\times192$ & 428k & 7.88 & 54.8 \\
-            $1024\times256$ & 526k & 12.15 & 68.7 \\
-            \hline
-        \end{tabular}
-        \caption{Adding: mean subgrid area, the cycles the adding stage spends, and those cycles per subgrid cell.}
-        \label{tab:binsize_subgrid}
-    \end{subtable}
-    \caption{The bin dimensions acting on the three stages it controls, for a 2D, $1$\,GiB, unit-density transform on the test platform of Section~\ref{sec:platform}.}
-    \label{tab:binsize_all}
+    \small
+    \begin{tabular}{rrrrrr}
+        \hline
+        bin & /L1d & /L2 & Gcyc & L1 miss & L2 miss \\
+        \hline
+        $4\times1$ & 0.04 & 0.01 & 3.70 & 0.086 & 0.083 \\
+        $8\times2$ & 0.07 & 0.01 & 3.83 & 0.058 & 0.055 \\
+        $16\times4$ & 0.12 & 0.02 & 3.97 & 0.031 & 0.041 \\
+        $32\times8$ & 0.29 & 0.04 & 4.03 & 0.037 & 0.033 \\
+        $48\times12$ & 0.51 & 0.06 & 4.05 & 0.062 & 0.031 \\
+        $64\times16$ & 0.80 & 0.10 & 4.04 & 0.057 & 0.030 \\
+        $96\times24$ & 1.56 & 0.19 & 4.25 & 0.260 & 0.033 \\
+        $128\times32$ & 2.57 & 0.32 & 4.51 & 0.404 & 0.036 \\
+        $192\times48$ & 5.34 & 0.67 & 5.80 & 0.551 & 0.078 \\
+        $256\times64$ & 9.12 & 1.14 & 8.18 & 0.613 & 0.157 \\
+        $384\times96$ & 19.7 & 2.46 & 9.38 & 0.631 & 0.400 \\
+        $512\times128$ & 34.2 & 4.28 & 9.82 & 0.659 & 0.505 \\
+        $768\times192$ & 75.3 & 9.41 & 16.07 & 0.668 & 0.590 \\
+        $1024\times256$ & 132.4 & 16.5 & 55.55 & 0.686 & 0.634 \\
+        \hline
+    \end{tabular}
+    \caption{Spreading against the bin dimensions: the padded bin relative to the L1d and L2 caches, the cycles spreading takes, and the L1 and L2 miss rates, for a 2D, $1$\,GiB, unit-density transform on the test platform of Section~\ref{sec:platform}.}
+    \label{tab:spread_l2}
+\end{table}
+
+\subsection{Other binsize limits}
+
+Two further limits restrict which bins are worth considering. The first is their shape, which should follow the order of the dimensions in memory, $b_x \ge b_y \ge b_z$. The fine grid is stored with $x$ contiguous, consecutive $y$ rows $N_x$ cells apart and consecutive $z$ planes $N_x N_y$ cells apart, and the bin index also runs fastest along $x$, so a subproblem fills its bins along $x$ first and its subgrid is a box of $x_{\mathrm{ext}} \times (b_y + w) \times (b_z + w)$ cells. For a given number of points, small $b_y$ and $b_z$ give a subgrid of few long rows, and tall or deep bins give one of many short rows. Each row is zeroed, spread into and added to the fine grid separately, and each starts and ends at an arbitrary place within a cache line, so every row brings about one partially used line with it, an overhead that is negligible for long rows and grows as the rows shorten. In the fine grid, moreover, every row of a subgrid lies in a different page, $N_x \cdot 2\,\texttt{sizeof(FLT)}$ bytes ($108$\,kB on the reference transform) from the next, so a tall subgrid makes the add step touch many pages per subproblem, more than the translation lookaside buffer holds, while a flat one touches few and its successors along the same bin row reuse them. Restricting the bins to $b_x \ge b_y \ge b_z$ also keeps them in the region where the subgrid formulas of Section~\ref{sec:subgrid_size} were checked against measurements. When bin size and $S_{\max}$ were selected jointly for $18$ test configurations, adding this restriction raised the geometric-mean speed-up over the default from $1.44$ to $1.49$; since $S_{\max}$ was re-selected at the same time, that comparison does not isolate the effect of the shape alone.
+
+The second limit is the cache. Points keep an arbitrary order inside a bin, so while the points of one bin are spread, the kernel's writes scatter over the whole region the bin covers, padded by the kernel width on every side so that a point at the edge can deposit its full $w^d$ neighbourhood. That region,
+\begin{equation}
+    (b_x + w)(b_y + w)(b_z + w) \cdot 2\,\texttt{sizeof(FLT)} \ \text{bytes},
+    \label{eq:padded_bin}
+\end{equation}
+is written repeatedly as the bin is consumed, and Table~\ref{tab:spread_l2} shows what happens once it leaves the L1 data cache. Up to $64 \times 16$, where the padded bin fills $0.8$ of L1d, spreading costs between $3.7$ and $4.05$ Gcycles regardless of the bin; at $96 \times 24$ and $128 \times 32$, past L1d but inside L2, it rises to $4.25$ and $4.5$ Gcycles as the misses are served by L2; and once the padded bin no longer fits in L2 either, from $192 \times 48$ onwards, it climbs to $5.8$, $8.2$ and finally $55.6$ Gcycles. A bin is therefore only allowed to grow while the padded region of Equation~\eqref{eq:padded_bin} stays within $0.9$ of L1d, which leaves room for the kernel values and the staging buffer the stage also keeps in L1. In three dimensions in double precision even the default $16 \times 4 \times 4$ bin exceeds this, at $43.5$\,kB with the padding of an $8$-point kernel, so there the default is kept.
+
+\section{Selection algorithm}
+
+The estimates of this chapter combine into a procedure that chooses the bin dimensions and $S_{\max}$ for a given transform before it runs. Its inputs are the dimension $d$, the precision, the fine grid $N_1 \times \dots \times N_d$, the number of points $M$, the number of threads $n_{\mathrm{thr}}$, the kernel width $w$, and the sizes of the L1d, L2 and L3 caches. It assumes uniformly distributed points and needs no measurement of the input.
+\begin{enumerate}
+    \item \emph{Candidate bins.} Take powers of two, $b_x \in \{16, \dots, 2048\}$ and $b_y, b_z \in \{4, \dots, 64\}$, and keep those with $b_x \ge b_y \ge b_z$ whose padded region, Equation~\eqref{eq:padded_bin}, fits in $0.9$ of L1d. The library default, $16 \times 4 \times 4$, is the smallest bin allowed in every dimension; if no candidate fits, the default is the only one.
+    \item \emph{Candidate subproblem sizes.} Take $40$ values of $S_{\max}$ spaced logarithmically up to $M / n_{\mathrm{thr}}$, so that every thread receives at least one subproblem, and keep those of at least $2500$ points, below which the subgrid of a subproblem is mostly padding.
+    \item \emph{Estimate.} For every pair, add the DRAM lines per point of the bin sort, Equations~\eqref{eq:sort_reads} and~\eqref{eq:sort_writes}, and of the spreading stage, Equations~\eqref{eq:spread_reads} and~\eqref{eq:spread_writes}. The terms that depend on neither parameter, the coordinates and strengths read once by each stage, are the same for every pair and may be left out.
+    \item \emph{Choose} the pair with the fewest lines.
+\end{enumerate}
+The search evaluates at most a few hundred closed-form expressions and takes well under a millisecond, which is negligible against the plan and the transform. Because the spreading stage is limited by memory bandwidth above about ten threads (Section~\ref{sec:memory_bound}), minimising the lines moved is a proxy for minimising time there; at lower thread counts it is a weaker one.
+
+\section{Experimental Results}
+
+Table~\ref{tab:selection_results} compares the selected configurations with the library defaults on $54$ test transforms: one, two and three dimensions, single and double precision, and nine densities from $0.125$ to $32$ points per fine-grid cell, each with at least $4.2$ million points, a kernel of $8$ points and an upsampling factor of $2$. The points are distributed uniformly and, on $20$ threads, also exponentially, which clusters them towards one corner of the grid and so departs from the uniform distribution the estimates assume; the same selected configurations are used for both. The picks were made with the ramp ends of an earlier fit, $\tfrac{1}{4}$ to $8\,C_3$ for the subgrid and $C_2$ to $4\,C_3$ for the buffer. Each entry is the geometric mean, over the transforms of a row, of the time of the bin sort and the spreading stage with the default parameters divided by the time with the selected ones. Appendix~\ref{app:selection} lists the selected configuration and both ratios for every transform.
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lrrrr}
+        \toprule
+        & \multicolumn{4}{c}{geometric average speed-up} \\
+        \cmidrule(lr){2-5}
+        & \multicolumn{3}{c}{uniform distribution} & exponential distribution \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-5}
+        transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
+        \midrule
+        1D double & $2.06$ & $1.46$ & $1.10$ & $1.79$ \\
+        1D single & $2.17$ & $1.56$ & $1.20$ & $1.79$ \\
+        2D double & $1.36$ & $1.24$ & $1.08$ & $1.57$ \\
+        2D single & $1.44$ & $1.31$ & $1.09$ & $1.72$ \\
+        3D double & $1.09$ & $0.97$ & $0.96$ & $0.94$ \\
+        3D single & $1.16$ & $0.99$ & $1.00$ & $0.91$ \\
+        \midrule
+        all $54$ & $1.49$ & $1.23$ & $1.07$ & $1.40$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Geometric average speed-up of the bin sort plus the spreading stage with the selected bin dimensions and $S_{\max}$ over the library defaults, over the nine densities of each row.}
+    \label{tab:selection_results}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lrrrr}
+        \toprule
+        & \multicolumn{4}{c}{geometric average CPU time reduction} \\
+        \cmidrule(lr){2-5}
+        & \multicolumn{3}{c}{uniform distribution} & exponential distribution \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-5}
+        transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
+        \midrule
+        1D double & $1.12$ & $0.99$ & $0.97$ & $1.05$ \\
+        1D single & $1.01$ & $0.98$ & $0.98$ & $0.95$ \\
+        2D double & $1.13$ & $1.18$ & $1.07$ & $1.07$ \\
+        2D single & $1.11$ & $1.20$ & $1.05$ & $1.08$ \\
+        3D double & $1.04$ & $1.04$ & $0.96$ & $1.17$ \\
+        3D single & $1.09$ & $1.06$ & $1.00$ & $1.14$ \\
+        \midrule
+        all $54$ & $1.08$ & $1.07$ & $1.00$ & $1.07$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Geometric average reduction of the CPU time of the spreading stage, the thread-seconds summed over all threads, with the selected bin dimensions and $S_{\max}$ against the library defaults, over the nine densities of each row: the CPU time with the defaults divided by the CPU time with the selected configuration.}
+    \label{tab:selection_work}
+\end{table}
+
+
+Table~\ref{tab:selection_work} separates the spreading stage's CPU time, the time summed over all threads, from its wall time. The CPU time falls by $8\%$ on geometric mean on $20$ threads and by $7\%$ on $10$, and is unchanged on one thread, so the selected configurations make each thread do less rather than merely move the same work around. The contrast with Table~\ref{tab:selection_results} is sharpest in three dimensions with exponentially distributed points: the CPU time falls by $14$ to $17\%$, yet the wall time rises, because the large selected $S_{\max}$ leaves each thread only a few subproblems of very different cost and the threads that finish early wait for the others.
+
+On $20$ threads, the configuration the procedure was designed for, the selection is faster on $51$ of the $54$ transforms and $1.49$ times faster on geometric mean. Most of the gain is in the sort, which the larger bins make $2.2$ times faster on geometric mean, and the largest gains are in one dimension, where the default bins are smallest relative to the cache. In three dimensions the bins stay at $16 \times 4 \times 4$, since no larger bin fits in L1d, and only $S_{\max}$ changes; the three transforms that became slower are all of this kind, with a selected $S_{\max}$ large enough to leave each thread only a few subproblems, so that the work is unevenly divided among the threads, an effect the traffic estimate does not contain. With fewer threads the gains shrink, because spreading is then limited by latency and computation rather than by bandwidth, and in three dimensions the selection is no better than the defaults.
+
+With exponentially distributed points the selection is $1.40$ times faster on geometric mean. One and two dimensions still gain throughout, by $1.79$ and $1.57$ to $1.72$ times: the sort gains about as much as with uniform points, and in two dimensions spreading gains more, $1.5$ to $1.6$ times, because the larger bins suit the clustered points. Three dimensions, however, become slower in $15$ of their $18$ transforms, by up to $22\%$. The selected $S_{\max}$ there is large, so each thread receives only a few subproblems, and with clustered points those subproblems differ widely in cost; the losses are largest at the densities where the selected $S_{\max}$ is largest. The traffic estimate assumes uniform points and has no term for this imbalance.
+
+To separate the two parameters, the comparison was repeated with the bins kept at the library default and only $S_{\max}$ chosen by the procedure; Tables~\ref{tab:selection_sp} and~\ref{tab:selection_sp_work} give the result, and Appendix~\ref{app:selection_sp} the values for every transform. In three dimensions nothing changes, since the full selection keeps the default bins there as well. In one and two dimensions $S_{\max}$ alone gains far less than the joint selection: $1.09$ times on geometric mean over all $54$ transforms on $20$ threads against $1.49$, and almost nothing in one dimension, where the whole gain of the joint selection comes from the sort. The CPU time of the spreading stage, on the other hand, falls by about as much as with the joint selection, $7\%$ against $8\%$ on $20$ threads. Choosing $S_{\max}$ is thus what reduces the work of the spreading stage, and choosing the bins is what speeds up the sort; with exponentially distributed points in two dimensions, where $S_{\max}$ alone already gains $1.36$ to $1.43$ times, the bins add a further $15$ to $20\%$.
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lrrrr}
+        \toprule
+        & \multicolumn{4}{c}{geometric average speed-up, $S_{\max}$ only} \\
+        \cmidrule(lr){2-5}
+        & \multicolumn{3}{c}{uniform distribution} & exponential distribution \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-5}
+        transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
+        \midrule
+        1D double & $1.04$ & $1.00$ & $1.00$ & $1.03$ \\
+        1D single & $1.00$ & $0.99$ & $1.02$ & $0.99$ \\
+        2D double & $1.12$ & $1.15$ & $1.04$ & $1.36$ \\
+        2D single & $1.12$ & $1.14$ & $1.00$ & $1.43$ \\
+        3D double & $1.09$ & $0.97$ & $0.96$ & $0.94$ \\
+        3D single & $1.16$ & $0.99$ & $1.00$ & $0.91$ \\
+        \midrule
+        all $54$ & $1.09$ & $1.04$ & $1.00$ & $1.09$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Geometric average speed-up of the bin sort plus the spreading stage with the default bins and the selected $S_{\max}$ over the library defaults, over the nine densities of each row.}
+    \label{tab:selection_sp}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{lrrrr}
+        \toprule
+        & \multicolumn{4}{c}{geometric average CPU time reduction, $S_{\max}$ only} \\
+        \cmidrule(lr){2-5}
+        & \multicolumn{3}{c}{uniform distribution} & exponential distribution \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-5}
+        transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
+        \midrule
+        1D double & $1.11$ & $1.02$ & $1.00$ & $1.04$ \\
+        1D single & $1.01$ & $0.99$ & $1.02$ & $0.98$ \\
+        2D double & $1.11$ & $1.17$ & $1.05$ & $1.06$ \\
+        2D single & $1.09$ & $1.17$ & $1.01$ & $1.06$ \\
+        3D double & $1.04$ & $1.04$ & $0.96$ & $1.17$ \\
+        3D single & $1.09$ & $1.06$ & $1.00$ & $1.14$ \\
+        \midrule
+        all $54$ & $1.07$ & $1.07$ & $1.01$ & $1.08$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Geometric average reduction of the CPU time of the spreading stage, the thread-seconds summed over all threads, with the default bins and the selected $S_{\max}$ against the library defaults, over the nine densities of each row.}
+    \label{tab:selection_sp_work}
 \end{table}
 
 \section{Conclusion}
