@@ -1,0 +1,116 @@
+.. _devnotes:
+
+Developer notes
+===============
+
+* Developers needing to update/regenerate documentation in general, including our readthedocs website, see ``docs/README``. Developers changing MATLAB/octave interfaces or docs, also see ``matlab/README``. Please also see ``contributing.md`` for code style and git hook guidelines.
+
+* To preview the docs locally, run ``make web`` (makefile), or the cmake way::
+
+    cmake --preset docs                  # or: cmake -B build -DFINUFFT_BUILD_DOCS=ON
+    cmake --build build/docs --target web
+
+  Both build the sphinx HTML and serve it at http://localhost:8042; Ctrl-C stops the server. The python deps (``sphinx`` plus those in ``docs/requirements.txt``) live in a venv whose setup commands - uv and plain pip - are in section 2 of ``docs/README`` and are reprinted by both targets when a dependency is missing; note cmake checks for sphinx and its ``texext`` extension at configure time, so activate the venv before running cmake.
+
+* FINUFFT is by default built with position-independent code (``-fPIC`` compile flag), by both the Makefile and CMake. See CMake options to change this for the static library. Developers changing the FINUFFT source code should use ``static`` functions unless they need to export the symbol; this will prevent performance degradation when using ``-fPIC``.
+
+* To update the version number, this needs to be done by hand in the following places (we decided that a version-bump script is not worth the hassle):
+
+  - ``CMakeLists.txt`` for cmake
+  - ``docs/conf.py`` for sphinx
+  - ``docs/install.rst`` cmake git tags (3 places)
+  - ``examples/quick-start/fetchcontent/CMakeLists.txt`` GIT_TAG
+  - ``python/finufft/finufft/__init__.py`` for the python pkg version
+  - ``python/cufinufft/cufinufft/__init__.py`` for the GPU python pkg version
+  - ``include/finufft/plan.hpp`` for debug output
+  - ``matlab/Contents.m`` for the MATLAB/Octave help
+  - ``CHANGELOG``: don't forget to describe the new features and changes, folding lines at 80 chars.
+
+* There are some sphinx tags in the source code, indicated by @ in comments. Please leave these alone since they are needed by the doc generation.
+
+* Source code is now in clang format, and Python in ruff format. The pre-commit hooks do this for you, on the staged hunks only, so you can just write code and commit; run ``pre-commit install`` once to enable them. To format by hand instead, use ``clang-format -i --style=.clang-format <editedfile>`` or ``ruff format <editedfile>``, or set up your editor to do it. To bypass the hooks use ``git commit --no-verify``, or ``SKIP=<hook-id> git commit`` for a single one.
+
+* Run ``tools/setup-git.sh`` once after cloning. Git configuration is per clone, so the repo cannot ship it, and two things depend on it:
+
+  - ``blame.ignoreRevsFile``, so ``git blame`` skips the bulk-formatting commits listed in ``.git-blame-ignore-revs``.
+  - the ``diff.pyfmt``/``diff.cfmt`` textconv drivers, which diff Python and C/C++ through their formatters. Both sides of a diff are normalized, so a formatting-only commit shows up as an empty diff and review sees only real changes. ``git blame`` uses them too, and unlike the ignore file it also covers lines that a reformat created.
+
+  So ``git diff master...my-branch`` shows what you actually changed, and a rebase over a reformat stops being a wall of noise. To see the formatting anyway, switch the driver off for that one command::
+
+    git -c diff.pyfmt.textconv=cat show <sha>      # Python, raw
+    git -c diff.cfmt.textconv=cat show <sha>       # C/C++/CUDA, raw
+
+  Two caveats: ``--stat``, ``--numstat`` and ``--shortstat`` are computed from the raw blobs and so always report the unnormalized counts, and a normalized diff is for reading only -- it will not apply as a patch.
+
+  A few files are deliberately left hand-formatted and are excluded from ruff in ``ruff.toml`` (and again in ``.pre-commit-config.yaml``, since darker passes only a basename to ruff): ``devel/``, ``tutorial/poisson2dnuquad.py``, whose column-aligned comment tables annotate a derivation, and the Python 2 ``perftest/spreadbenchmark.py``. Elsewhere, use ``# fmt: off`` / ``# fmt: on`` around a block, or ``# fmt: skip`` on a statement, to keep layout that carries meaning.
+
+* If you add a new option field (recall it must be plain C style only, no special types) to ``include/finufft_opts.h``, don't forget to add it to ``include/finufft.fh``, ``include/finufft_mod.f90``, ``matlab/finufft.mw``, ``python/finufft/finufft/_finufft.py``, and the Julia interface, as well a paragraph describing its use in the docs. Also to set its default value in ``include/finufft/plan.hpp:finufft_default_opts_t``. You will then need to regenerate the docs as in ``docs/README``.
+
+* For basic testing and performance measuring routines see ``test/README`` and ``perftest/README``.
+  To generate sets of performance graphs that enable rapid eyeball comparison between releases, see the :ref:`performance page <performance>` with graphs generated by the Jenkins perftest job via ``perftest/run_perftest_ci.py``.
+
+* The kernel function in spreadinterp is evaluated via piecewise-polynomial approximation (Horner's rule). The code for this is auto-generated in MATLAB, for all upsampling factors. There are two versions supported:
+
+  - 2018--2024 vintage: no explicit SIMD vectorization, C code is generated code for the Horner evaluation loop, by running from MATLAB ``gen_all_horner_C_code.m``
+
+  - post-2024 vintage: explicit SIMD and many other acceleration tricks, and the generated code is a static C++ array of coefficients, and their sizes (``nc`` or number of coefficients) for each width ``w``. Run from MATLAB ``gen_ker_horner_loop_cpp_code.m``
+
+  See ``devel/README`` for more details. The ES kernel coefficient and poly approx degree for both of the above are defined in a single location, ``devel/get_degree_and_beta.m``, which must match the C++ ``setup_spreadinterp()`` function.
+
+* Continuous Integration (CI). See files for this in ``.github/workflows/``. It currently tests the default ``makefile`` settings in linux, and three other ``make.inc.*`` files covering OSX and Windows (MinGW). CI does not test build the variant OMP=OFF. The dev should test these locally. Likewise, the Julia wrapper is separate and thus not tested in CI. We have added ``JenkinsFile`` for the GPU CI via python wrappers.
+
+* **Installing MWrap**. This is needed only for experts to rebuild the matlab/octave interfaces.
+  `MWrap <https://github.com/zgimbutas/mwrap>`_
+  is a very useful MEX interface generator by Dave Bindel, now maintained
+  and expanded by Zydrunas Gimbutas.
+  Make sure you have ``flex`` and ``bison`` installed to build it.
+  As of FINUFFT v2.0 you will need a recent (>=0.33.10) version of MWrap.
+  Make sure to override the location of MWrap by adding a line such as::
+
+    MWRAP = your-path-to-mwrap-executable
+
+  to your ``make.inc``, and then you can use the ``make mex`` task.
+
+* The cufinufft Python wheels are binary wheels; the CUDA runtime and cuFFT are deliberately not bundled (see the ``auditwheel``/``delvewheel`` exclusions in ``python/cufinufft/pyproject.toml``), so they need a matching CUDA runtime on the system. The released ones are built by the ``build_cufinufft_wheels`` GitHub workflow; the same wheels are built and tested on GPU hardware for every supported CUDA version by the Jenkins pipeline, using ``tools/cufinufft/docker/Dockerfile-x86_64`` and ``tools/cufinufft/build-wheel.sh`` (see ``tools/cufinufft/docker/README`` for running that locally).
+
+* CMake compiling on linux at Flatiron Institute (Rusty cluster): We have had a report that if you want to use LLVM, you need to ``module load llvm/16.0.3`` otherwise the default ``llvm/14.0.6`` does not find ``OpenMP_CXX``.
+
+* Note to the nvcc developer. nvcc with debug symbols causes a stack overflow that is undetected at both compile and runtime. This goes undetected until ns>=10 and dim=3, for ns<10 or dim < 3, one can use -G and debug the code with cuda-gdb. The way to avoid is to not use Debug symbols, possibly using ``--generate-line-info`` might work (not tested). As a side note, compute-sanitizers do not detect the issue.
+
+* Testing cufinufft (for FI, mostly):
+
+.. code-block:: sh
+
+    # to grab an interactive GPU shell -- here with 10 cores for building and a v100 for
+    # testing. You could just as easily try this on your workstation
+    srun -p gpu -C v100 -c 10 -n 1 --gpus=1 --pty bash
+    cd path/to/finufft
+
+    # get the local card to this machine's compute capability. If you know it you can obviously type it yourself
+    CUDAARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader|head -n 1| sed 's/\.//')
+
+    # Load modules and build a venv. We typically recommend using venvs that fall back our our
+    # default packages with the python module (--system-site-packages)
+    module -q purge
+    module -q load gcc python cmake fftw cuda
+    python -m venv venv --system-site-packages
+    source venv/bin/activate
+    pip install --upgrade pip
+
+    # building. Feel free to tweak whatever
+    mkdir -p build && cd build
+    cmake -DFINUFFT_BUILD_TESTS=on -DFINUFFT_BUILD_EXAMPLES=on -DFINUFFT_USE_CUDA=on \
+        -DCMAKE_CUDA_ARCHITECTURES=$CUDAARCH -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+    make -j 10
+
+    # for standard tests
+    ctest
+
+    # python install. Needs build from before since installer searches for libcufinufft.so in
+    # LD_LIBRARY_PATH (and default path)
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD pip install -e ../python/cufinufft
+
+    # python tests. we have other GPU framework support, but you need to make sure they're
+    # installed (numba, pycuda, torch, cupy). This LD_LIBRARY_PATH may or may not be necessary,
+    # depending on if an RPATHing issue appears. Fix upstream at time of writing
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$PWD python -m pytest --framework=numba ../python/cufinufft

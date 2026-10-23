@@ -1,0 +1,107 @@
+name: C++ Build
+
+on:
+  pull_request:
+    branches:
+      - master
+  # Every branch: a push has to be checked before a PR exists.
+  push:
+  # Manual trigger (with an optional deploy toggle)
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy after build?"
+        type: boolean
+        required: false
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Linux:
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_28_x86_64:latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install fftw
+      run: |
+        yum install -y fftw3-devel
+
+    - name: Compile C++ code
+      run: |
+        make test
+
+    - name: make install into a staging prefix, then check the prefix
+      run: |
+        make -j lib
+        make install PREFIX="$PWD/_makestage"
+        test -f "$PWD/_makestage/lib/libfinufft.so"
+        test -f "$PWD/_makestage/lib/libfinufft.a"
+        test -f "$PWD/_makestage/include/finufft.h"
+        test -f "$PWD/_makestage/include/finufft/finufft_eitherprec.h"
+        test -f "$PWD/_makestage/include/finufft_common/defines.h"
+        make objclean >/dev/null
+        rm -rf "$PWD/_makestage"
+
+  MacOS_clang:
+    runs-on: macos-14
+    env:
+      MACOSX_DEPLOYMENT_TARGET: 11.0
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install omp and fftw
+      run: |
+        brew install libomp fftw
+        cp make-platforms/make.inc.macosx_clang make.inc
+
+    - name: Compile C++ code
+      run: |
+        make test
+
+  MacOS_gcc:
+    runs-on: macos-14
+    env:
+      MACOSX_DEPLOYMENT_TARGET: 11.0
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install gcc and fftw
+      run: |
+        brew install gcc fftw
+        cp make-platforms/make.inc.macosx_gcc make.inc
+
+    - name: Compile C++ code
+      run: |
+        make test
+
+  Windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - uses: actions/checkout@v7
+    - name: 'Setup MSYS2'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: false
+        install: >-
+          git
+          make
+          diffutils
+        pacboy: >-
+          toolchain:p
+          fftw:p
+    - name: Compile C++ code
+      run: |
+        cp make-platforms/make.inc.windows_msys make.inc
+        make test

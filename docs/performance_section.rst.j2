@@ -1,0 +1,31 @@
+{{ heading }}
+{{ '~' * heading|length }}
+{% for label, value in facts %}
+{{ label }}: ``{{ value }}``.
+{% endfor %}
+
+{% for dim, transform_groups in dim_transform_groups.items() %}
+{{ dim }}D transforms
+^^^^^^^^^^^^^^^^^^^^^
+
+{% for group, method_groups in transform_groups.items() %}
+Type {{ group }}
+""""""""""""""""
+
+{% for method_heading, images in method_groups.items() %}
+{% if method_heading %}
+{{ method_heading }}
+{{ '+' * method_heading|length }}
+
+{% endif %}
+{% for image in images %}
+Parameters: ``{{ image.params }}``
+
+.. image:: https://raw.githubusercontent.com/flatironinstitute/finufft/perftest-results/docs/{{ image.path }}
+   :alt: {{ image.path }}
+   :width: 100%
+
+{% endfor %}
+{% endfor %}
+{% endfor %}
+{% endfor %}
