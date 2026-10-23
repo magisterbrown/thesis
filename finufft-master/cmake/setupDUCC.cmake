@@ -1,0 +1,54 @@
+CPMAddPackage(
+    NAME
+    ducc0
+    GIT_REPOSITORY
+    https://github.com/mreineck/ducc.git
+    GIT_TAG
+    ${DUCC0_VERSION}
+    GIT_SHALLOW
+    YES
+    DOWNLOAD_ONLY
+    YES
+)
+
+if(ducc0_ADDED)
+    add_library(
+        ducc0
+        STATIC
+        ${ducc0_SOURCE_DIR}/src/ducc0/infra/string_utils.cc
+        ${ducc0_SOURCE_DIR}/src/ducc0/infra/threading.cc
+        ${ducc0_SOURCE_DIR}/src/ducc0/infra/mav.cc
+    )
+    # Build-tree only: finufft's TUs include ducc fft headers, but downstream
+    # consumers of an installed (static) finufft never do (the public API is plain
+    # C). Wrapping in BUILD_INTERFACE keeps the absolute source path out of the
+    # exported interface so ducc0 can be part of finufftTargets and stay relocatable.
+    target_include_directories(ducc0 SYSTEM PUBLIC $<BUILD_INTERFACE:${ducc0_SOURCE_DIR}/src/>)
+    target_compile_options(ducc0 PRIVATE $<$<CONFIG:Release,RelWithDebInfo>:${FINUFFT_ARCH_FLAGS}>)
+    target_compile_options(ducc0 PRIVATE $<$<CONFIG:Release>:${FINUFFT_CXX_FLAGS_RELEASE}>)
+    target_compile_options(ducc0 PRIVATE $<$<CONFIG:RelWithDebInfo>:${FINUFFT_CXX_FLAGS_RELWITHDEBINFO}>)
+    target_compile_features(ducc0 PRIVATE cxx_std_17)
+    # private because we do not want to propagate this requirement
+    set_target_properties(ducc0 PROPERTIES POSITION_INDEPENDENT_CODE ${FINUFFT_POSITION_INDEPENDENT_CODE})
+    check_cxx_compiler_flag(-ffast-math HAS_FAST_MATH)
+    if(HAS_FAST_MATH)
+        target_compile_options(ducc0 PRIVATE -ffast-math)
+    endif()
+    check_cxx_compiler_flag(/fp:fast HAS_FP_FAST)
+    if(HAS_FP_FAST)
+        target_compile_options(ducc0 PRIVATE /fp:fast)
+    endif()
+    if(NOT OpenMP_CXX_FOUND)
+        find_package(Threads REQUIRED)
+        target_link_libraries(ducc0 PRIVATE Threads::Threads)
+    endif()
+    enable_asan(ducc0)
+    set_target_properties(ducc0 PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES)
+
+    add_library(finufft_fftlibs INTERFACE)
+    target_link_libraries(finufft_fftlibs INTERFACE ducc0)
+    set(FINUFFT_FFT_BUNDLE ducc0)
+endif()
+
+set(FINUFFT_FFT_BUNDLE "${FINUFFT_FFT_BUNDLE}" PARENT_SCOPE)
+set(FINUFFT_FFTW_FIND_MODULE "" PARENT_SCOPE)

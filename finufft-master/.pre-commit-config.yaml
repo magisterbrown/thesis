@@ -1,0 +1,71 @@
+exclude: '\.m$|\.mw$|\.doc$|\.docbit$|\.docsrc$|\.rst$'
+
+repos:
+  # --- C / C++ / CUDA: staged hunks only via git-clang-format ---
+  # Uses a wrapper script to work around git-clang-format's fixed temp-index
+  # path (.git/clang-format-index) which causes stale .lock files when the
+  # pre-commit framework's concurrent git operations race with it.
+  - repo: local
+    hooks:
+      - id: clang-format-staged
+        name: clang-format (staged hunks)
+        entry: python tools/clang-format-staged.py
+        language: python
+        additional_dependencies: [clang-format==22.*]
+        pass_filenames: true
+        require_serial: true
+        types_or: [c++, c, cuda]
+        files: \.(c|cc|cpp|h|hpp|cu|cuh)$
+        exclude: '(^|/)(matlab/.*)$'
+      - id: gersemi-staged
+        name: gersemi (staged hunks)
+        entry: python tools/gersemi-staged.py
+        language: python
+        additional_dependencies: [gersemi==0.28.1]
+        pass_filenames: true
+        require_serial: true
+        files: '(^|/)(CMakeLists\.txt|[^/]+\.cmake(?:\.in)?)$'
+  # --- Python ---
+  - repo: https://github.com/akaihola/darker
+    rev: v3.0.0
+    hooks:
+      - id: darker
+        args: [--formatter=ruff]
+        # tomli: darker's ruff formatter imports it on Python < 3.11 but never
+        # declares it, so the hook fails to import there without this.
+        additional_dependencies: [ruff==0.16.4, 'tomli; python_version < "3.11"']
+        # Keep this in step with ruff.toml: darker calls ruff with
+        # --stdin-filename=<basename>, so ruff's own path excludes never match here.
+        exclude: '^(deps/|devel/|tutorial/poisson2dnuquad\.py$|perftest/spreadbenchmark\.py$)'
+
+  # --- Shell ---
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1
+    hooks:
+      - id: shfmt
+
+  # --- Standard file hygiene ---
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-illegal-windows-names
+      - id: mixed-line-ending
+
+  # --- Python package validation ---
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: v0.25
+    hooks:
+      - id: validate-pyproject
+        additional_dependencies: ["validate-pyproject-schema-store[all]"]
+        files: ^python/(finufft|cufinufft)/pyproject\.toml$
+
+  # --- Jenkinsfile ---
+  - repo: https://github.com/nvuillam/npm-groovy-lint
+    rev: v18.0.0
+    hooks:
+      - id: npm-groovy-lint
+        args: [--failon, error]
+        files: (^|/)Jenkinsfile$
