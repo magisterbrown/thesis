@@ -1,3 +1,4 @@
+% !TEX root = ../main.tex
 \chapter{Experimental Setup and Methodology}
 \label{ch:methodology}
 
@@ -8,7 +9,7 @@ This chapter collects the experimental setup shared by every measurement in the 
 
 All experiments in this thesis were run on a single machine, a one-socket server with an Intel Xeon E5-2698 v4 processor (Broadwell-EP microarchitecture). Its relevant properties are listed in Table~\ref{tab:platform}. The processor has one NUMA node, so every thread sees the same memory latency and the memory-contention effects discussed in Chapter~\ref{ch:parameter_tuning} are not confounded by remote-memory accesses. Because the two hardware threads of a core share that core's L1 and L2 caches, the per-thread cache share that the analytical models refer to is half of the per-core capacity whenever all $40$ hardware threads are in use.
 
-\begin{table}[h]
+\begin{table}[ht]
     \centering
     \begin{tabular}{|l|l|}
         \hline

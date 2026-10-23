@@ -1,3 +1,4 @@
+% !TEX root = ../main.tex
 \chapter{Introduction}
 \label{ch:introduction}
 
@@ -117,9 +118,10 @@ constants are adequate could be distinguished from those in which they are not.
 \section{Thesis Objective and Scope}
 
 The objective of this thesis is to explain, stage by stage, how FINUFFT's
-configuration parameters determine the time a transform takes, and to express in
+configuration parameters determine the time a transform takes, to express in
 closed form those parts of that behaviour which follow from the structure of the
-algorithm rather than from the machine. The aim is that a good value for a
+algorithm rather than from the machine, and, for the parameters of the spreader,
+to propose and evaluate a procedure that chooses their values from those models. The aim is that a good value for a
 parameter can be derived from properties known before the transform runs -- its
 dimension, its point density, the accuracy requested of it, the number of
 threads and the sizes of the caches they share -- rather than found by trying
@@ -134,9 +136,11 @@ the maximum subproblem size and the atomic-update threshold have no counterpart.
 Type-2 transforms are not measured; a type-3 transform appears only in the stage breakdown of
 Chapter~\ref{ch:parameter_importance}. All three
 \emph{dimensionalities} are covered, with the two-dimensional case used as the
-reference workload. The measurements are in \emph{double precision}, except in
+reference workload. The analyses are in \emph{double precision}, except in
 Chapter~\ref{ch:sigma_selection}, where the cost of the FFT and of the spreading
-kernel is also measured in single precision.
+kernel is also measured in single precision; the proposed selection procedure of
+Chapter~\ref{ch:parameter_tuning} is evaluated in both precisions, on uniformly
+and on exponentially distributed points.
 
 Of the options FINUFFT exposes, six are studied: whether the points are sorted,
 the upsampling factor, the maximum subproblem size, the thread count above which
@@ -159,14 +163,17 @@ upsampling factor, so every configuration compared here meets the same error
 target, and accuracy enters as a constraint on which configurations are
 admissible rather than as a quantity to be traded against speed.
 
-Finally, the thesis provides the cost
-models, the thresholds and the measured constants from which automatic parameter selector
-could be built, and Chapter~\ref{ch:conclusion} sets out what would remain to be
-done.
+Finally, the thesis is analytical for the upsampling factor and both analytical
+and constructive for the spreader parameters. For $\sigma$ it models and validates
+the two costs the parameter trades, but proposes no selector, since one of the two
+costs can be ranked but not predicted. For the maximum subproblem size and the bin
+dimensions it proposes a selection procedure and measures it against the library
+defaults. Chapter~\ref{ch:conclusion} sets out what would remain to be done for
+the other parameters.
 
 \section{Research Questions}
 
-This thesis addresses three questions.
+This thesis addresses four questions.
 
 \begin{enumerate}
     \item \textbf{Which of FINUFFT's configuration parameters affect performance?}
@@ -185,13 +192,20 @@ This thesis addresses three questions.
     each model reaches: whether it predicts an absolute cost, only the ordering
     of candidate values, or only the point at which a trend changes, with the
     steepness on either side left to be measured on the machine at hand.
+
+    \item \textbf{Can such models choose, before a transform runs, a
+    configuration that is faster than the library defaults?} An answer proposes
+    a selection procedure built only on quantities known in advance, measures it
+    against the defaults over a range of transforms, and identifies where and
+    why it fails.
 \end{enumerate}
 
 \section{Contributions}
 
-The contributions of this thesis are of three kinds: a way of measuring where a
-transform spends its time, a set of measurements made with it, and models that
-reproduce part of what those measurements show.
+The contributions of this thesis are of four kinds: a way of measuring where a
+transform spends its time, a set of measurements made with it, models that
+reproduce part of what those measurements show, and a selection procedure built
+on those models.
 
 \paragraph{Methodological.}
 \begin{itemize}
@@ -247,6 +261,18 @@ reproduce part of what those measurements show.
     The cost of the FFT is described by two regimes, according to whether the
     fine grid fits in the last-level cache, and the boundary between them is
     fixed by the cache size rather than fitted.
+
+    \item \textbf{A memory traffic model of the bin sort and the spreading
+    stage.} The DRAM lines moved per point by each stage are expressed in terms
+    of the bin dimensions, the maximum subproblem size, the kernel width, the
+    density, the thread count and the cache sizes.
+\end{itemize}
+
+\paragraph{Proposed model.}
+\begin{itemize}
+    \item \textbf{A selection procedure for the bin dimensions and the maximum
+    subproblem size.} It evaluates the traffic model over combnations of max subproblem and bin size
+    and picks one that generates least memory traffic. 
 \end{itemize}
 
 \section{Thesis Organization}
@@ -262,11 +288,13 @@ Chapter~\ref{ch:parameter_importance} establishes where a transform spends its
 time and which of the six parameters account for the variation in it, narrowing
 the field for the two chapters that follow.
 Chapter~\ref{ch:sigma_selection} takes the upsampling factor, the highest-ranked
-of them, and models the two costs it trades against each other.
+of them, and analyses and models the two costs it trades against each other.
 Chapter~\ref{ch:parameter_tuning} does the same for the parameters that govern
 the spreader -- the maximum subproblem size, the sort bin dimensions and the
 choice of synchronisation -- and derives the model of subgrid size on which
-their behaviour rests.
+their behaviour rests; it then combines these results into a model of memory
+traffic, proposes a procedure that selects the bin dimensions and the maximum
+subproblem size from it, and evaluates that procedure on $54$ transforms.
 Chapter~\ref{ch:conclusion} answers the research questions, states the
 limitations of the study, and sets out what a parameter selector built on these
 results would still require.

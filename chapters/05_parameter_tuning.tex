@@ -1,4 +1,5 @@
-\chapter{Analysis of the Spreader Parameters}
+% !TEX root = ../main.tex
+\chapter{Spreader Parameters: Analysis and a Selection Model}
 \label{ch:parameter_tuning}
 
 %\section{Methodology}
@@ -10,16 +11,16 @@
 
 \section{Parameters Under Consideration}
 
-Beyond $\sigma$, which was treated in Chapter~\ref{ch:sigma_selection}, parameters analyzed in this chapter are: the maximum subproblem size and the bin dimensions. 
+Beyond $\sigma$, which was treated in Chapter~\ref{ch:sigma_selection}, the parameters examined in this chapter are the maximum subproblem size and the bin dimensions.
 
-FINUFFT algorithm projects non uniform points onto uniform grid. To project points in efficiently, they are first sorted into bins and then processed in batches. This chapter will analyze how both parameters under Consideration affect throughout during these stages.
+FINUFFT spreads the nonuniform points onto the uniform grid in two steps: the points are first sorted into bins, and then processed in batches, the subproblems. This chapter has two parts. The first analyses how the two parameters affect the throughput of these stages and derives the quantities that determine it: the average subgrid size (Section~\ref{sec:subgrid_size}), the trade-off the maximum subproblem size governs, and the cache limits on the bin dimensions. The second part combines those results into a model of the memory traffic of the bin sort and the spreading stage, proposes a procedure that uses it to choose both parameters before a transform runs (Section~\ref{sec:selection_algorithm}), and evaluates that procedure against the library defaults on test transforms (Section~\ref{sec:selection_results}).
 
 \section{Spreading Is Memory Bound}
 \label{sec:memory_bound}
 
-Chapter~\ref{ch:parameter_importance} showed that spreading dominates the transform (Section~\ref{sec:stage_breakdown}), but not what limits it. To find out, the spreading stage of the reference transform (Section~\ref{sec:workload}) was run with the library defaults at $1$ to $20$ threads and at all $40$ hardware threads, and two quantities were recorded over the spreading loop alone. The first is the traffic between the processor and main memory, read from the memory controllers' own counters of 64-byte line reads and writes; divided by the wall time of the loop it gives the DRAM bandwidth the stage consumes. The second is the number of instructions the threads retire per cycle (IPC), read from each thread's core counters around the gather, spread and add steps. Multiplied by the thread count, IPC becomes the instruction throughput of the whole processor. On this build the library selected $\sigma = 1.15$ and a kernel width of $12$ for the reference transform; each point is the median of three runs. Figure~\ref{fig:memory_bound} shows both quantities.
+To find out what limits the spreading stage of the reference transform (Section~\ref{sec:workload}) was run with the library defaults at $1$ to $20$ threads and at all $40$ hardware threads, and two quantities were recorded over the spreading loop alone. The first is the traffic between the processor and main memory, read from the memory controllers' own counters of 64-byte line reads and writes; divided by the wall time of the loop it gives the DRAM bandwidth the stage consumes. The second is the number of instructions the threads retire per cycle (IPC), read from each thread's core counters around the gather, spread and add steps. Multiplied by the thread count, IPC becomes the instruction throughput of the whole processor. Each point is the median of three runs. Figure~\ref{fig:memory_bound} shows both quantities.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=0.85\textwidth]{figures/memory_bound/scaling.pdf}
     \caption{DRAM bandwidth consumed by the spreading stage (top) and instructions retired per cycle summed over all threads (bottom) for the reference transform, against the number of threads. The dotted line extends the throughput of one thread linearly; the shaded region uses both hardware threads of each core.}
@@ -35,9 +36,7 @@ Above about ten threads, therefore, the spreading stage is memory bound: its tim
 
 \section{Subgrid size}
 \label{sec:subgrid_size}
-
-Subgrid size influences performance during the addition stage. A subgrid is a cuboid that tightly wraps all the points assigned to its subproblem, padded by the kernel width. Subproblems themselves are picked from a partially bin-sorted array of points: rather than fully sorting all points by position, the points are only sorted into coarse bins, and each subproblem is then formed by taking a contiguous run of $S_{\max}$ points from this partially-sorted array. Because the points are randomly distributed, the subgrids of different subproblems sometimes overlap, so the sum of all subgrid areas exceeds the global area. Figure~\ref{fig:subgrid_overlap} shows how the first 20 such cuboids are written into the global grid, and how much they overlap one another along both axes. The rest of this section shows that the two parameters under consideration act on the subgrid in the same direction: increasing the bin size or decreasing $S_{\max}$ makes the subgrids larger relative to the number of points they hold, so the stage zeroes, writes and adds back more cells per nonuniform point. The add step reads and writes every subgrid cell's counterpart in the shared fine grid, and once the subgrids no longer fit in cache their own cells travel to and from memory as well, so a larger subgrid per point raises the bandwidth demand of the stage that Section~\ref{sec:memory_bound} identified as its limit.
-
+Sum of all subgrid sizes is a parameter that influences memory demand. A subgrid is a cuboid that wraps all the points assigned to its subproblem, padded by the kernel width. Subproblems themselves are picked from a partially bin-sorted array of points: rather than fully sorting all points by position, the points are only sorted into coarse bins, and each subproblem is then formed by taking a contiguous run of $S_{\max}$ points from this partially-sorted array. Because the points are randomly distributed, the subgrids of different subproblems sometimes overlap, so the sum of all subgrid areas exceeds the global area. Figure~\ref{fig:subgrid_overlap} shows how the first 20 such cuboids are written into the global grid, and how much they overlap one another along both axes. The rest of this section shows that the two parameters under consideration act on the subgrid in the same direction: increasing the bin size or decreasing $S_{\max}$ makes the sum of subgrids larger relative to the number of points they hold, so the stage zeroes and adds back more cells per nonuniform point. The add step reads and writes every subgrid cell's counterpart in the shared fine grid, and once the subgrids no longer fit in cache their own cells travel to and from memory as well, so a larger subgrid per point raises the bandwidth demand of the stage that Section~\ref{sec:memory_bound} identified as its limit.
 
 \subsection{Estimating average subgrid size}
 
@@ -60,12 +59,19 @@ In two dimensions the bins are visited $x$ fastest, so a contiguous run of point
     f = \min(1, r)
     \label{eq:subgrid_xext}
 \end{equation}
-cells along $x$ while it stays inside one row, where $r$ expresses that reach as a fraction of a bin-row and $f$ is the probability that the run does not fit inside a single row. Which of two shapes the subgrid takes depends on where the run happens to start. If it lies entirely within one row like on Figure~\ref{fig:subgrid_cuboid_regular} it is a compact box, $x_{\mathrm{ext}} + b_x$ cells wide and $b_y$ tall. If instead it straddles a row boundary linke on Figure~\ref{fig:subgrid_cuboid_wrapping} it consists of a suffix of one row and a prefix of the next; those two pieces sit at opposite ends of the $x$ axis, so their common bounding box spans the full width of the grid and two rows in height, however few points the run holds. Figure~\ref{fig:subgrid_overlap} shows locations and dimensions of first 20 subgrids from a real transform: the compact subgrids tile each bin-row along $x$, while the straddling ones reach from edge to edge and are two rows tall. Averaging the two cases over the starting offset, and padding every extent by the kernel width, gives the mean subgrid area
+cells along $x$ while it stays inside one row, where $r$ expresses that reach as a fraction of a bin-row and $f$ is the probability that the run does not fit inside a single row. Which of two shapes the subgrid takes depends on where the run happens to start; Figure~\ref{fig:subgrid_cuboid_examples} shows both. If it lies entirely within one row, as in Figure~\ref{fig:subgrid_cuboid_regular}, it is a compact box, $x_{\mathrm{ext}} + b_x$ cells wide and $b_y$ tall. If instead it straddles a row boundary, as in Figure~\ref{fig:subgrid_cuboid_wrapping}, it consists of a suffix of one row and a prefix of the next; those two pieces sit at opposite ends of the $x$ axis, so their common bounding box spans the full width of the grid and two rows in height, however few points the run holds. Figure~\ref{fig:subgrid_overlap} shows locations and dimensions of first 20 subgrids from a real transform: the compact subgrids tile each bin-row along $x$, while the straddling ones reach from edge to edge and are two rows tall. Averaging the two cases over the starting offset, and padding every extent by the kernel width, gives the mean subgrid area
 \begin{equation}
     A_2 = (1 - f)\,(x_{\mathrm{ext}} + b_x + w)(b_y + w)
         \;+\; f\,(N_x + w)\bigl((\max(1, r) + 1)\, b_y + w\bigr).
     \label{eq:subgrid_2d}
 \end{equation}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\textwidth]{figures/subgrid_layout/subgrid_layout.pdf}
+    \caption{Bounding boxes of the first 20 subgrids at $S_{\max}=2500$, coloured by whether the subproblem crosses a bin-row boundary.}
+    \label{fig:subgrid_overlap}
+\end{figure}
 The two clamps play opposite roles and cannot be merged. In the first, $f = \min(1, r)$ is a probability, and it saturates at one because a run longer than a row always spans the full width. In the second, $\max(1, r)$ is a row count, and it is floored at one because a straddling run covers two rows however short it is; for $r \geq 1$ the first term vanishes and the expression reduces to $(N_1 + w)\bigl((r+1) b_y + w\bigr)$, the run starting at an arbitrary offset and therefore touching $r + 1$ rows on average.
 
 In three dimensions the same construction applies once more, because the bins are visited $y$ next and $z$ slowest. A run now fills entire rows of bins along $x$ before advancing in $y$, and entire slabs of bins, meaning all bins sharing one $z$ index, before advancing in $z$. The reach along $x$ inside a single row becomes $x_{\mathrm{ext}} = S_{\max} / (\rho\, b_y b_z)$, and alongside $r$ and $f$ a second pair is needed for the slabs,
@@ -89,7 +95,7 @@ The slab-crossing subgrids are rare but decisive, and their number is fixed by t
 
 Table~\ref{tab:subgrid_pred} compares the three predictions against subgrid sizes logged directly from the spreader, at unit density and with $b_x = 16$, $b_y = b_z = 4$ and $w = 7$. Each row averages every subgrid built during one transform, from $40$ subgrids at the largest subproblem size up to $20{,}000$ at the smallest. All three agree to within $1\%$, and the residual is largest at small $S_{\max}$, where the discrete number of bins a run touches is least well described by its average.
 
-\begin{table}[h]
+\begin{table}[ht]
     \centering
     \scriptsize
     \setlength{\tabcolsep}{2.5pt}
@@ -158,14 +164,8 @@ Table~\ref{tab:subgrid_pred} compares the three predictions against subgrid size
 \end{table}
 
 
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=\textwidth]{figures/subgrid_layout/subgrid_layout.pdf}
-    \caption{Bounding boxes of the first 20 subgrids at $S_{\max}=2500$, coloured by whether the subproblem crosses a bin-row boundary.}
-    \label{fig:subgrid_overlap}
-\end{figure}
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \begin{subfigure}[b]{0.48\textwidth}
         \centering
@@ -184,20 +184,15 @@ Table~\ref{tab:subgrid_pred} compares the three predictions against subgrid size
     \label{fig:subgrid_cuboid_examples}
 \end{figure}
 
-Both the maximum subproblem size and the bin dimensions therefore act on the same quantity, but not in the same way. $S_{\max}$ enters only through $x_{\mathrm{ext}}$, and does so linearly: halving it halves the reach of a subproblem along the fast axis. Of the bin dimensions only $b_x$ is linear, contributing the additive slack that comes from sorting into bins rather than sorting fully. The dimensions beyond $x$ are not. Because $b_y$ sits in the denominator of $x_{\mathrm{ext}}$, it also enters $r$ and the crossing probability $f$: enlarging it shortens the reach along $x$ and makes a boundary crossing less likely, while at the same time making every row taller and every crossing that does occur more expensive. In three dimensions $b_z$ repeats the pattern one level up, through $q$.
+Both the maximum subproblem size and the bin dimensions therefore act on the same quantity, but not in the same way. $S_{\max}$ enters only through $x_{\mathrm{ext}}$, and does so linearly: halving it halves the reach of a subproblem along the fast axis. Of the bin dimensions only $b_x$ is linear, contributing the additive slack that comes from sorting into bins rather than sorting fully. The dimensions beyond $x$ are not. Because $b_y$ sits in the denominator of $x_{\mathrm{ext}}$, it also enters $r$ and the crossing probability $f$: enlarging it shortens the reach along $x$ and makes a boundary crossing less likely, while at the same time making every row taller. In three dimensions $b_z$ repeats the pattern one level up, through $q$.
 
 \section{Maximum Subproblem Size}
 
-During the spreading stage, nonuniform points are partitioned into spatially localised subproblems so that each subproblem's contribution to the fine grid can be accumulated independently. The parameter $S_{\max}$ (exposed in the FINUFFT interface as \texttt{max\_subproblem\_size}) sets an upper bound on the number of nonuniform points assigned to any single subproblem.
+During the spreading stage, nonuniform points are partitioned into spatially localised subproblems so that each subproblem's contribution to the fine grid can be accumulated independently. The parameter $S_{\max}$ (exposed in the FINUFFT interface as \texttt{max\_subproblem\_size}) sets an upper bound on the number of nonuniform points assigned to any single subproblem. It also changes two opposing factors in terms of memory demand.
 
-What matters for the cost of the stage is not the size of one subgrid but the number of subgrid cells per nonuniform point, since every one of them is zeroed, spread into and added back. Section~\ref{sec:subgrid_size} gives that number directly: dividing the mean subgrid size by the number of points a subproblem holds. In one dimension, Equation~\eqref{eq:subgrid_1d} becomes
-\begin{equation}
-    \frac{L_1}{S_{\max}} = \frac{1}{\rho} + \frac{b + w}{S_{\max}}
-    \label{eq:subgrid_per_point}
-\end{equation}
-cells per point. The first term is the share of the fine grid that each point covers on its own; it depends only on the density and no choice of parameters removes it. The second term is overhead: the slack of sorting into bins of $b$ cells and the padding of $w$ cells for the kernel, both paid once per subproblem regardless of how many points it holds. $S_{\max}$ decides how many points share that overhead. A small $S_{\max}$ spreads it over few points, so each point brings many extra cells with it; a large $S_{\max}$ amortises it until the subgrids cover little more than the grid itself. The two- and three-dimensional sizes of Equations~\eqref{eq:subgrid_2d} and~\eqref{eq:subgrid_3d} behave the same way, with the bin slack and the padding entering through $x_{\mathrm{ext}}$ and the bin rows, so in every dimension raising $S_{\max}$ lowers the number of subgrid cells, and with it the traffic of the zeroing and add steps, per point.
+The first factor is the size of the subgrids. Every subgrid must be zeroed before spreading and added to the fine grid afterwards, so each of its cells costs memory traffic. Section~\ref{sec:subgrid_size} showed that a subgrid is larger than the region its points occupy. This overhead is paid once per subgrid, however many points the subproblem holds, so $S_{\max}$ decides number of overheads. The sum of all subgrid sizes divided by the number of points, $A_d / S_{\max}$ with $A_d$ from Equations~\eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and~\eqref{eq:subgrid_3d}, therefore estimates the subgrid cells, and with them the traffic of the zeroing and add steps, per point; it falls as $S_{\max}$ grows.
 
-A larger $S_{\max}$ is not free, however, because it enlarges something else. Before spreading a subproblem, each thread copies the coordinates and strengths of its points into a staging buffer of $(d+2)\,\texttt{sizeof(FLT)}\,S_{\max}$ bytes, $d$ words for the coordinates and two for the complex strength of each point, so its size grows linearly with $S_{\max}$. While the buffer fits in the thread's share of the L2 cache, the lines written for one subproblem are still in cache when the next one overwrites them. Once it no longer fits, every buffer line must be fetched from a lower level before it is written and written back afterwards, so the gather step takes more cache misses and stalls on them. The same increase in $S_{\max}$ that makes the subgrid smaller per point therefore makes the gather miss more, and very large subgrids eventually leave the L3 cache as well. $S_{\max}$ trades memory traffic in the add step against memory traffic in the gather step.
+The second factor works in the opposite direction. Before spreading a subproblem, each thread copies the coordinates and strengths of its points into a staging buffer of $(d+2)\,\texttt{sizeof(FLT)}\,S_{\max}$ bytes, $d$ words for the coordinates and two for the complex strength of each point, so its size grows linearly with $S_{\max}$. While the buffer fits in the thread's share of the L3 cache, the lines written for one subproblem stay in cache untill the next one overwrites them. Once it no longer fits, every buffer line must be fetched from a memory when a kernel processes it, so the gather step takes more cache misses and stalls on them. The same increase in $S_{\max}$ that makes the subgrid smaller per point therefore makes the gather miss more, and very large subgrids eventually leave the L3 cache as well. $S_{\max}$ trades memory traffic in the add step against memory traffic in the gather step.
 
 The two effects can be put on one scale by estimating the number of DRAM lines (64 bytes) the spreading stage reads and writes per nonuniform point. Write $s = M / \max(n_{\mathrm{thr}}, \lceil M / S_{\max} \rceil)$ for the number of points in a subproblem, $A_d(s)$ for its mean subgrid size from Equations~\eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and~\eqref{eq:subgrid_3d}, and $\ell = 64 / (2 \cdot \texttt{sizeof(FLT)})$ for the number of complex cells in a line. Then
 \begin{equation}
@@ -206,7 +201,7 @@ The two effects can be put on one scale by estimating the number of DRAM lines (
     u = \frac{1 - e^{-\rho\, w^{d-1} (w + \ell - 1)}}{\rho\, \ell}
     \label{eq:traffic_terms}
 \end{equation}
-are the subgrid lines, the staging-buffer lines and the subgrid lines touched by the kernel, each per point; $u$ counts the lines covered by the $w^{d-1} \times (w + \ell - 1)$ footprint of a point's kernel, shared between points that fall close together. Whether the subgrid and the buffer stay in cache is expressed by two fractions that grow log-linearly between the size at which each starts to spill and the size at which it no longer fits at all,
+are the total subgrid lines, the staging-buffer lines and the subgrid lines touched by the kernel, each per point; $u$ counts the lines covered by the $w^{d-1} \times (w + \ell - 1)$ footprint of a point's kernel, shared between points that fall close together. Whether the subgrid and the buffer stay in cache is modeled by log-linear interpolation between the size at which each starts to spill and the size at which it no longer fits at all,
 \begin{equation}
     h_{\mathrm{sub}} = \mathrm{ramp}\Bigl(2\,\texttt{sizeof(FLT)}\, A_d(s);\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr), \qquad
     h_{\mathrm{buf}} = \mathrm{ramp}\Bigl(\beta \cdot 64\, s;\ C_2,\ 1.5\, C_3\Bigr),
@@ -217,11 +212,11 @@ where $\mathrm{ramp}(x; a, c) = \min\bigl(1, \max(0, \ln(x/a) / \ln(c/a))\bigr)$
     \mathrm{reads}  &= (d + 1) + 2\beta\, h_{\mathrm{buf}} + (2\lambda + u)\, h_{\mathrm{sub}} + \gamma \lambda, \label{eq:spread_reads}\\
     \mathrm{writes} &= \beta\, h_{\mathrm{buf}} + (2\lambda + u)\, h_{\mathrm{sub}} + \gamma \lambda. \label{eq:spread_writes}
 \end{align}
-The term $d + 1$ is the coordinates and the strength of each point, read once at random; the $\beta$ terms are the staging buffer, fetched before it is written, re-read by the kernel and written back once it no longer fits; the $\lambda$ and $u$ terms are the subgrid, fetched by the zeroing, touched again by the kernel and read back by the add step once it no longer fits; and $\gamma \lambda$ is the fine grid, read and written by the add step. $S_{\max}$ moves the terms in opposite directions: raising it lowers $\lambda$ but raises $h_{\mathrm{buf}}$ and $h_{\mathrm{sub}}$, which is the trade-off described above. Against the line counts of the processor's memory controllers, the estimate of reads plus writes has a median error of $7\%$ over $351$ measured configurations of dimension, precision, density, bin size and $S_{\max}$; it underestimates the writes alone by about a quarter, so it ranks configurations better than it predicts their absolute traffic.
+The term $d + 1$ is the coordinates and the strength of each point, read once at random; the $\beta$ terms are the staging buffer, fetched before it is written, re-read by the kernel and written back once it no longer fits; the $\lambda$ and $u$ terms are the subgrid, fetched by the zeroing, touched again by the kernel and read back by the add step once it no longer fits; and $\gamma \lambda$ is the fine grid, read and written by the add step. $S_{\max}$ moves the terms in opposite directions: raising it lowers $\lambda$ but raises $h_{\mathrm{buf}}$ and $h_{\mathrm{sub}}$, which is the trade-off described above. Against the line counts of the processor's memory controllers, the estimate of reads plus writes has a median error of $7\%$ over $360$ measured configurations of dimension, precision, density, bin size and $S_{\max}$, listed in Appendix~\ref{app:traffic}; it underestimates the writes alone by about a quarter, so it ranks configurations better than it predicts their absolute traffic.
 
 Figure~\ref{fig:maxsp_traffic_model} compares the estimate of reads plus writes with the line counts of the memory controllers for the reference transform on $20$ threads, one per core, sweeping $S_{\max}$ with every other setting at its default. The ends of the two ramps in Equation~\eqref{eq:traffic_ramps} were fitted to this sweep together with the $54$ configurations of dimension, precision and density used elsewhere in this chapter: the subgrid and the buffer leave the cache over a narrow range around a thread's share of L3, between half and twice that share for the subgrid and up to one and a half times it for the buffer. On the $54$ configurations the median error of the estimate is $7\%$. On the reference transform it agrees with the measurements from $S_{\max} \approx 30{,}000$ upwards, to within $7\%$ except at the largest subproblem size, one per thread, where it is $11\%$ low. Below that it is too high, by $13$ to $74\%$, and the error grows as $S_{\max}$ shrinks: small subproblems are processed in sorted order, so consecutive subproblems add into neighbouring parts of the fine grid while those lines are still cached, a reuse the constant $\gamma$ does not capture. The estimate therefore reproduces the traffic of large subproblems and the step at which the staging buffer leaves the L2 cache, but overestimates the traffic of small subproblems.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/maxsp_traffic_model/traffic.pdf}
     \caption{DRAM lines read and written per nonuniform point by the spreading stage of the reference transform on $20$ threads against $S_{\max}$: measured by the memory controllers, and estimated as the sum of Equations~\eqref{eq:spread_reads} and~\eqref{eq:spread_writes}. The dotted vertical line marks the library default, $S_{\max} = 10^5$.}
@@ -242,7 +237,7 @@ The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{t
 %with $d$ words per point for the coordinates and two for the complex strength. While $B(S_{\max})$ fits in a thread's share of cache, the lines written by one subproblem are still owned when the next one overwrites them, and the stores cost nothing beyond the cache hit. Once $B(S_{\max})$ exceeds that share, every written line, with the points it holds, must first be fetched from a lower level of the hierarchy and later written back, and the thread stalls while it waits.
 %Figure~\ref{fig:fb_full} shows the mechanism directly, with $S_{\max}$ swept over a range wide enough to contain the threshold. In two dimensions at double precision a point occupies $32$ bytes, so the buffer holds $4096$ points in a thread's share of the $256$\,KiB second-level cache and $8192$ in a whole core's. Below that range gathering is cheap and flat, $10.9$ to $12.4$ billion cycles from $S_{\max} = 500$ to $2000$; across it the cost roughly doubles, to $14.6$ billion at $4000$ and $20.9$ billion at $8000$; above it the curve flattens again between $25$ and $28$ billion. The \texttt{cycle\_activity.stalls\_l2\_miss} counter, which records execution stalls while a demand load that missed the second-level cache is outstanding, accounts for nearly all of that: it follows the same curve one step above it, from $12.0$ to $30.6$ billion cycles, so gathering is not doing more work at large $S_{\max}$ but waiting more. The \texttt{l1d\_pend\_miss.fb\_full} counter, which records the cycles a demand request was blocked because no line-fill buffer was available, rises over the same interval, from $0.34$ to $0.77$ billion cycles, and then flattens; the pool of fill buffers does therefore run dry once the buffer leaves the cache, but at roughly $3\%$ of gathering's cycles it is a symptom of the traffic rather than the bulk of the cost.
 %
-%\begin{figure}[h]
+%\begin{figure}[ht]
 %    \centering
 %    \includegraphics[width=\textwidth]{figures/maxsp_fbfull_xeon/maxsp_fbfull_xeon.pdf}
 %    \caption{Cycles attributed to gathering against $S_{\max}$: on the left the cycles it consumes and those it spends stalled on an L2 miss, on the right the cycles blocked for want of a line-fill buffer, which are two orders of magnitude fewer and so carry their own panel. The dashed line marks where the staging buffer fills a thread's share of L2.}
@@ -261,7 +256,7 @@ The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{t
 %subgrid model predicts, $A(S_{\max}) \cdot n_{\mathrm{sub}}$. The cost of adding is almost perfectly
 %predicted by the number of cells written.
 %
-%\begin{figure}[h]
+%\begin{figure}[ht]
 %    \centering
 %    \includegraphics[width=0.8\textwidth]{figures/maxsp_steps/maxsp_addvol.pdf}
 %    \caption{Measured adding cycles and the number of cells written predicted by the subgrid model, against $S_{\max}$.}
@@ -285,7 +280,7 @@ The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{t
 %sweep, over every combination of dimension, density and thread count, is given in
 %Figure~\ref{fig:smax_sweep_all} in Appendix~\ref{app:maxsp_sweeps}.
 %
-%\begin{figure}[h]
+%\begin{figure}[ht]
 %    \centering
 %    \includegraphics[width=\textwidth]{figures/maxsp_density/maxsp_density.pdf}
 %    \caption{Cycles spent gathering and adding against $S_{\max}$ at low and high point density, and at unit density on a single thread.}
@@ -300,7 +295,7 @@ The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{t
 %
 %Table~\ref{tab:sync_grid} measures both. Each entry is the throughput of the transform with the critical section divided by its time with atomics, so a value above one means atomics are faster and a value below one means the critical section is. The transform is the reference one at unit density, $M = 2^{23}$ points on a $2896^2$ grid at $\varepsilon = 10^{-6}$, with every other option left at its default; each entry is the mean of three repetitions.
 %
-%\begin{table}[h]
+%\begin{table}[ht]
 %    \centering
 %    \begin{tabular}{|r|rrrrrrrrr|}
 %        \hline
@@ -335,7 +330,7 @@ Before spreading, FINUFFT sorts all points into bins with an incomplete histogra
 By default, FINUFFT uses boxes of $16$ grid points along the fast $x$ axis and, in two or three dimensions, $4$ points along the slower $y$ and $z$ axes. These sizes are fixed in the library, but nothing about the algorithm requires them, and the rest of this section measures what they cost.
 \subsection{Binsize effect on memory}
 
-The bin size pulls the two stages in opposite directions. In the spreading stage a smaller bin means a smaller subgrid: the bin enters Equation~\eqref{eq:subgrid_per_point} through the slack term $(b + w)/S_{\max}$, and Equations~\eqref{eq:subgrid_2d} and~\eqref{eq:subgrid_3d} in the same way through the bin rows, so with smaller bins each point brings fewer subgrid cells with it and the add step moves less data. The sort pays for this. The grid is cut into
+The bin size pulls the two stages in opposite directions. In the spreading stage a smaller bin means a smaller subgrid: the bin enters Equation~\eqref{eq:subgrid_1d} through the slack term $b$, paid once per subgrid, and Equations~\eqref{eq:subgrid_2d} and~\eqref{eq:subgrid_3d} in the same way through the bin rows, so with smaller bins each point brings fewer subgrid cells with it and the add step moves less data. The sort pays for this. The grid is cut into
 \begin{equation}
     n_{\mathrm{bins}} = \prod_{i=1}^{d} \bigl(\lfloor N_i / b_i \rfloor + 1\bigr)
     \label{eq:nbins}
@@ -352,16 +347,16 @@ for the counting pass, $P_{c1}$, and with the open \texttt{ret} lines added to t
     P_{\mathrm{ret}} = \max\Bigl(0,\ 1 - \frac{C_3 n_t / 64}{\min(n_t n_{\mathrm{bins}},\ M / 8) + n_t L_c}\Bigr).
     \label{eq:sort_ret_miss}
 \end{equation}
-Together with the compulsory traffic, the coordinates read once by each pass and one line of \texttt{ret} written for every eight points, and with the passes that zero the histograms and turn them into offsets, $\kappa = (2 n_t + 1) L_c / M$ lines per point, the sort reads and writes
+Leaving out the compulsory traffic, which is the same for every bin size -- the coordinates read once by each pass, $2c$ lines, and one line of \texttt{ret} written for every eight points -- and adding the passes that zero the histograms and turn them into offsets, $\kappa = (2 n_t + 1) L_c / M$ lines per point, the bin-dependent traffic of the sort is
 \begin{align}
-    \mathrm{reads}  &= 2c + P_{c1} + P_{c2} + \tfrac{1}{8} + \tfrac{7}{8} P_{\mathrm{ret}} + \kappa, \label{eq:sort_reads}\\
-    \mathrm{writes} &= P_{c1} + P_{c2} + \tfrac{1}{8} + \tfrac{7}{8} P_{\mathrm{ret}} + \kappa \label{eq:sort_writes}
+    \mathrm{reads}  &= P_{c1} + P_{c2} + \tfrac{7}{8} P_{\mathrm{ret}} + \kappa, \label{eq:sort_reads}\\
+    \mathrm{writes} &= P_{c1} + P_{c2} + \tfrac{7}{8} P_{\mathrm{ret}} + \kappa \label{eq:sort_writes}
 \end{align}
-lines per nonuniform point, where a missed \texttt{ret} line costs $7/8$ of a line because the one line per eight points that is filled completely is already counted. While the bins are few, $P_{c1}$, $P_{c2}$ and $P_{\mathrm{ret}}$ are zero and the sort costs little more than one pass over the coordinates; as the bins shrink, the histogram and then the open lines outgrow $C_3$, and every point adds up to three missed lines in each direction. A bin size therefore trades the add traffic of Equations~\eqref{eq:spread_reads} and~\eqref{eq:spread_writes}, which falls as the bins shrink, against the sort traffic of Equations~\eqref{eq:sort_reads} and~\eqref{eq:sort_writes}, which rises.
+lines per nonuniform point, where a missed \texttt{ret} line costs $7/8$ of a line because the one line per eight points that is filled completely belongs to the compulsory traffic. While the bins are few, $P_{c1}$, $P_{c2}$ and $P_{\mathrm{ret}}$ are zero and the sort moves little beyond its compulsory traffic; as the bins shrink, the histogram and then the open lines outgrow $C_3$, and every point adds up to three missed lines in each direction. A bin size therefore trades the add traffic of Equations~\eqref{eq:spread_reads} and~\eqref{eq:spread_writes}, which falls as the bins shrink, against the sort traffic of Equations~\eqref{eq:sort_reads} and~\eqref{eq:sort_writes}, which rises.
 
 %The sort itself makes two passes over the points: the first counts how many fall into each bin, and the second writes each point's index into the slot its bin has been given. Nothing else is touched apart from an array of $n_{\mathrm{bins}}$ counters held privately by each thread, so the cost is governed by whether that array stays in cache rather than by how many points are being sorted. Table~\ref{tab:binsort_cost} shows the consequence: sorting reaches its fastest, about $4.5$ Gcycles per transform, once the counter array has fallen well inside the L1 data cache, which happens at a bin of $384\times96$, and coarser bins bring no further gain. The array first fits at $128\times32$, but sorting still pays $6.4$ Gcycles there, so the approach to the floor is gradual rather than sharp. The default $16\times4$ leaves $526{,}000$ bins and a $2.1$\,MB counter array per thread, and pays $26.5$ Gcycles for it, nearly six times the floor.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/binsort_locality/binsort_locality.pdf}
     \caption{Three levels of sorting of the same point set, coloured by position in the array the spreader reads: without sorting a contiguous run of points is scattered over the whole grid, while bin sorting confines it to a band as tall as the bin.}
@@ -375,7 +370,7 @@ lines per nonuniform point, where a missed \texttt{ret} line costs $7/8$ of a li
 
 %Finally, the bin dimensions set the size of the subgrids, through the formulas already derived in \eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and \eqref{eq:subgrid_3d}, where it enters as $b$ along the single axis in one dimension and as $b_x$, $b_y$ and $b_z$ in two and three. Larger bins make larger subgrids, and \texttt{add\_wrapped\_subgrid} has to write out every cell of one, so adding slows down accordingly. Table~\ref{tab:binsize_subgrid} confirms both halves of this: the measured mean subgrid area follows \eqref{eq:subgrid_2d} across the range, and adding costs a nearly constant number of cycles per subgrid cell, about $57$ over the middle of the range, so most of its growth is the growth of the subgrids. The constant is not perfectly flat. The three smallest bins pay about $65$ cycles per cell and the largest $69$, so the two ends of the range carry a cost that subgrid volume alone does not account for.
 
-\begin{table}[h]
+\begin{table}[ht]
     \centering
     \small
     \begin{tabular}{rrrrrr}
@@ -414,6 +409,7 @@ The second limit is the cache. Points keep an arbitrary order inside a bin, so w
 is written repeatedly as the bin is consumed, and Table~\ref{tab:spread_l2} shows what happens once it leaves the L1 data cache. Up to $64 \times 16$, where the padded bin fills $0.8$ of L1d, spreading costs between $3.7$ and $4.05$ Gcycles regardless of the bin; at $96 \times 24$ and $128 \times 32$, past L1d but inside L2, it rises to $4.25$ and $4.5$ Gcycles as the misses are served by L2; and once the padded bin no longer fits in L2 either, from $192 \times 48$ onwards, it climbs to $5.8$, $8.2$ and finally $55.6$ Gcycles. A bin is therefore only allowed to grow while the padded region of Equation~\eqref{eq:padded_bin} stays within $0.9$ of L1d, which leaves room for the kernel values and the staging buffer the stage also keeps in L1. In three dimensions in double precision even the default $16 \times 4 \times 4$ bin exceeds this, at $43.5$\,kB with the padding of an $8$-point kernel, so there the default is kept.
 
 \section{Selection algorithm}
+\label{sec:selection_algorithm}
 
 The estimates of this chapter combine into a procedure that chooses the bin dimensions and $S_{\max}$ for a given transform before it runs. Its inputs are the dimension $d$, the precision, the fine grid $N_1 \times \dots \times N_d$, the number of points $M$, the number of threads $n_{\mathrm{thr}}$, the kernel width $w$, and the sizes of the L1d, L2 and L3 caches. It assumes uniformly distributed points and needs no measurement of the input.
 \begin{enumerate}
@@ -425,9 +421,10 @@ The estimates of this chapter combine into a procedure that chooses the bin dime
 The search evaluates at most a few hundred closed-form expressions and takes well under a millisecond, which is negligible against the plan and the transform. Because the spreading stage is limited by memory bandwidth above about ten threads (Section~\ref{sec:memory_bound}), minimising the lines moved is a proxy for minimising time there; at lower thread counts it is a weaker one.
 
 \section{Experimental Results}
+\label{sec:selection_results}
 
 Table~\ref{tab:selection_results} compares the selected configurations with the library defaults on $54$ test transforms: one, two and three dimensions, single and double precision, and nine densities from $0.125$ to $32$ points per fine-grid cell, each with at least $4.2$ million points, a kernel of $8$ points and an upsampling factor of $2$. The points are distributed uniformly and, on $20$ threads, also exponentially, which clusters them towards one corner of the grid and so departs from the uniform distribution the estimates assume; the same selected configurations are used for both. The picks were made with the ramp ends of an earlier fit, $\tfrac{1}{4}$ to $8\,C_3$ for the subgrid and $C_2$ to $4\,C_3$ for the buffer. Each entry is the geometric mean, over the transforms of a row, of the time of the bin sort and the spreading stage with the default parameters divided by the time with the selected ones. Appendix~\ref{app:selection} lists the selected configuration and both ratios for every transform.
-\begin{table}[h]
+\begin{table}[ht]
     \centering
     \small
     \begin{tabular}{lrrrr}
@@ -452,7 +449,7 @@ Table~\ref{tab:selection_results} compares the selected configurations with the 
     \label{tab:selection_results}
 \end{table}
 
-\begin{table}[h]
+\begin{table}[ht]
     \centering
     \small
     \begin{tabular}{lrrrr}
@@ -486,7 +483,7 @@ With exponentially distributed points the selection is $1.40$ times faster on ge
 
 To separate the two parameters, the comparison was repeated with the bins kept at the library default and only $S_{\max}$ chosen by the procedure; Tables~\ref{tab:selection_sp} and~\ref{tab:selection_sp_work} give the result, and Appendix~\ref{app:selection_sp} the values for every transform. In three dimensions nothing changes, since the full selection keeps the default bins there as well. In one and two dimensions $S_{\max}$ alone gains far less than the joint selection: $1.09$ times on geometric mean over all $54$ transforms on $20$ threads against $1.49$, and almost nothing in one dimension, where the whole gain of the joint selection comes from the sort. The CPU time of the spreading stage, on the other hand, falls by about as much as with the joint selection, $7\%$ against $8\%$ on $20$ threads. Choosing $S_{\max}$ is thus what reduces the work of the spreading stage, and choosing the bins is what speeds up the sort; with exponentially distributed points in two dimensions, where $S_{\max}$ alone already gains $1.36$ to $1.43$ times, the bins add a further $15$ to $20\%$.
 
-\begin{table}[h]
+\begin{table}[ht]
     \centering
     \small
     \begin{tabular}{lrrrr}
@@ -511,7 +508,7 @@ To separate the two parameters, the comparison was repeated with the bins kept a
     \label{tab:selection_sp}
 \end{table}
 
-\begin{table}[h]
+\begin{table}[ht]
     \centering
     \small
     \begin{tabular}{lrrrr}
@@ -542,7 +539,9 @@ The two parameters examined in this chapter act on the same three stages of a su
 
 The maximum subproblem size trades gathering against adding. Larger subproblems write back less total subgrid volume, because the padding of half a kernel width around each subgrid is paid once per subproblem, so adding falls steeply; gathering rises instead, and at large sizes there are too few subproblems to keep every thread busy, so the wall time of the phase grows even though the work done falls. Which of the two dominates is decided by the point density: at high density a full buffer of points covers only a small region of the grid and small subproblems are better, while at low density even a small buffer spreads over a large subgrid and large ones are better. Gathering, however, only slows down in some of these cases.  Gathering is thus insensitive to the subproblem size when few threads compete for memory and strongly sensitive when many do, which is why the trade-off against adding exists only at high thread counts: single-threaded, the best choice is simply the size that minimises the number of cells written.
 
-The bin dimensions act through three different quantities, each with its own threshold. The sort itself is governed by the number of bins, because it touches nothing but an array of counters held privately by each thread, and it reaches its floor once that array fits in the first-level cache -- which for the transform measured here happens only well above the library's default, leaving the default paying several times the floor. Spreading is governed by the region a bin covers once padded by the kernel, and is insensitive to the bin dimensions until that region no longer fits in cache, at which point its cost rises with the misses it causes. Adding is governed by the size of the subgrids the bins produce, which the relations of Section~\ref{sec:subgrid_size} predict, and its cost is close to proportional to the number of cells written, with a constant that holds to within about a tenth over the middle of the range and rises at both ends.
+The bin dimensions act through three different quantities, each with its own threshold. The sort itself is governed by the number of bins, because beyond its compulsory traffic it touches nothing but an array of counters held privately by each thread and one open line of the output per bin, and it moves little more than that compulsory traffic once these fit in the thread's share of the L3 cache -- which for the transform measured here happens only above the library's default, whose $2.85$\,MB histogram already exceeds the $2.5$\,MB share on $20$ threads. Spreading is governed by the region a bin covers once padded by the kernel, and is insensitive to the bin dimensions until that region no longer fits in cache, at which point its cost rises with the misses it causes. Adding is governed by the size of the subgrids the bins produce, which the relations of Section~\ref{sec:subgrid_size} predict, and its cost is close to proportional to the number of cells written, with a constant that holds to within about a tenth over the middle of the range and rises at both ends.
 
-Taken together, the two parameters cannot be chosen independently of each other or of the input. The subproblem size fixes how many points a subgrid must cover, the bin dimensions fix how far apart those points may lie, and it is their combination that determines total throughput. Balance between stages shifts when the density, the dimension and the thread count change. 
+Taken together, the two parameters cannot be chosen independently of each other or of the input. The subproblem size fixes how many points a subgrid must cover, the bin dimensions fix how far apart those points may lie, and it is their combination that determines total throughput. Balance between stages shifts when the density, the dimension and the thread count change.
+
+The proposed selection procedure turns this analysis into a choice made before the transform runs. It estimates the memory traffic of the bin sort and the spreading stage for each candidate pair of bin dimensions and $S_{\max}$, from the dimension, density, kernel width, thread count and cache sizes alone, and keeps the pair that moves the fewest lines. On $20$ threads it is faster than the library defaults on $51$ of $54$ transforms and $1.49$ times faster on geometric mean; most of the gain comes from the sort, which the larger bins make $2.2$ times faster, while the choice of $S_{\max}$ is what reduces the CPU time of the spreading stage. Its limits follow from what the traffic estimate leaves out. With fewer threads spreading is no longer bound by bandwidth and the gains shrink, to $1.23$ times on $10$ threads and $1.07$ on one. The estimate has no term for load imbalance, which causes the three slowdowns on $20$ threads, and it assumes uniformly distributed points: with exponentially distributed points one and two dimensions still gain, but three dimensions become slower in $15$ of $18$ transforms. 
 

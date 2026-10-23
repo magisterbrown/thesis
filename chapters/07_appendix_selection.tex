@@ -1,7 +1,8 @@
+% !TEX root = ../main.tex
 \section{Selection results for every test transform}
 \label{app:selection}
 
-This section lists, for each of the $54$ test transforms of Table~\ref{tab:selection_results}, the configuration chosen by the selection procedure and its effect against the library defaults: the bin dimensions and $S_{\max}$ in Table~\ref{tab:app_selection_picks}, the speed-up of the bin sort plus the spreading stage in Table~\ref{tab:app_selection_speedup}, and the reduction of the CPU time of the spreading stage in Table~\ref{tab:app_selection_work}. Every ratio is the value with the defaults divided by the value with the selected configuration, so values below one, set in bold, mark transforms that became slower or used more CPU time. Each value is the best of two runs.
+This section lists, for each of the $54$ test transforms of Table~\ref{tab:selection_results}, the configuration chosen by the selection procedure and its effect against the library defaults: the bin dimensions and $S_{\max}$ in Table~\ref{tab:app_selection_picks}, the speed-up of the bin sort plus the spreading stage in Table~\ref{tab:app_selection_speedup}, and the reduction of the CPU time of the spreading stage in Table~\ref{tab:app_selection_work}. Every ratio is the value with the defaults divided by the value with the selected configuration, so values below one mark transforms that became slower or used more CPU time. Each value is the best of two runs.
 
 \begin{table}[p]
     \centering
@@ -58,35 +59,35 @@ This section lists, for each of the $54$ test transforms of Table~\ref{tab:selec
         1D single & $1.75$ & $2.17$ & $1.83$ & $2.17$ & $2.28$ & $2.35$ & $2.35$ & $2.37$ & $2.35$ \\
         2D double & $1.05$ & $1.09$ & $1.31$ & $1.35$ & $1.26$ & $1.36$ & $1.55$ & $1.66$ & $1.71$ \\
         2D single & $1.35$ & $1.35$ & $1.30$ & $1.34$ & $1.30$ & $1.28$ & $1.69$ & $1.77$ & $1.71$ \\
-        3D double & $1.07$ & $1.08$ & $1.12$ & $1.15$ & $1.29$ & $1.16$ & $\mathbf{0.97}$ & $\mathbf{0.84}$ & $1.17$ \\
-        3D single & $1.13$ & $1.17$ & $1.21$ & $1.41$ & $1.37$ & $1.21$ & $1.02$ & $1.01$ & $\mathbf{0.97}$ \\
+        3D double & $1.07$ & $1.08$ & $1.12$ & $1.15$ & $1.29$ & $1.16$ & $0.97$ & $0.84$ & $1.17$ \\
+        3D single & $1.13$ & $1.17$ & $1.21$ & $1.41$ & $1.37$ & $1.21$ & $1.02$ & $1.01$ & $0.97$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $10$ threads}} \\
         1D double & $1.31$ & $1.43$ & $1.33$ & $1.44$ & $1.50$ & $1.50$ & $1.56$ & $1.56$ & $1.58$ \\
         1D single & $1.49$ & $1.70$ & $1.40$ & $1.57$ & $1.60$ & $1.56$ & $1.56$ & $1.57$ & $1.59$ \\
         2D double & $1.16$ & $1.15$ & $1.28$ & $1.46$ & $1.36$ & $1.22$ & $1.16$ & $1.19$ & $1.18$ \\
         2D single & $1.33$ & $1.42$ & $1.46$ & $1.37$ & $1.17$ & $1.18$ & $1.34$ & $1.33$ & $1.22$ \\
-        3D double & $\mathbf{0.98}$ & $\mathbf{0.99}$ & $1.02$ & $\mathbf{0.98}$ & $\mathbf{0.95}$ & $\mathbf{0.92}$ & $\mathbf{0.89}$ & $1.02$ & $1.02$ \\
-        3D single & $\mathbf{0.95}$ & $\mathbf{0.97}$ & $1.02$ & $\mathbf{0.96}$ & $\mathbf{0.94}$ & $\mathbf{0.92}$ & $1.05$ & $1.01$ & $1.08$ \\
+        3D double & $0.98$ & $0.99$ & $1.02$ & $0.98$ & $0.95$ & $0.92$ & $0.89$ & $1.02$ & $1.02$ \\
+        3D single & $0.95$ & $0.97$ & $1.02$ & $0.96$ & $0.94$ & $0.92$ & $1.05$ & $1.01$ & $1.08$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $1$ thread}} \\
         1D double & $1.18$ & $1.15$ & $1.09$ & $1.09$ & $1.06$ & $1.11$ & $1.12$ & $1.03$ & $1.06$ \\
         1D single & $1.31$ & $1.27$ & $1.20$ & $1.19$ & $1.18$ & $1.19$ & $1.18$ & $1.12$ & $1.14$ \\
         2D double & $1.27$ & $1.05$ & $1.01$ & $1.03$ & $1.06$ & $1.03$ & $1.19$ & $1.09$ & $1.06$ \\
         2D single & $1.14$ & $1.07$ & $1.02$ & $1.02$ & $1.02$ & $1.02$ & $1.21$ & $1.22$ & $1.11$ \\
-        3D double & $\mathbf{0.81}$ & $\mathbf{0.88}$ & $1.04$ & $\mathbf{0.94}$ & $\mathbf{0.99}$ & $1.00$ & $\mathbf{0.99}$ & $\mathbf{0.97}$ & $1.02$ \\
-        3D single & $1.07$ & $\mathbf{0.98}$ & $\mathbf{0.97}$ & $1.01$ & $1.02$ & $\mathbf{0.98}$ & $\mathbf{0.99}$ & $\mathbf{0.93}$ & $1.08$ \\
+        3D double & $0.81$ & $0.88$ & $1.04$ & $0.94$ & $0.99$ & $1.00$ & $0.99$ & $0.97$ & $1.02$ \\
+        3D single & $1.07$ & $0.98$ & $0.97$ & $1.01$ & $1.02$ & $0.98$ & $0.99$ & $0.93$ & $1.08$ \\
         \midrule
         \multicolumn{10}{l}{\emph{exponential distribution, $20$ threads}} \\
         1D double & $1.44$ & $1.74$ & $1.41$ & $1.69$ & $1.86$ & $1.95$ & $2.02$ & $2.07$ & $2.09$ \\
         1D single & $1.52$ & $1.73$ & $1.23$ & $1.71$ & $1.95$ & $1.99$ & $2.05$ & $2.08$ & $2.07$ \\
         2D double & $1.52$ & $1.46$ & $1.71$ & $1.70$ & $1.50$ & $1.50$ & $1.55$ & $1.60$ & $1.59$ \\
         2D single & $2.07$ & $1.89$ & $2.12$ & $1.90$ & $1.59$ & $1.43$ & $1.54$ & $1.55$ & $1.56$ \\
-        3D double & $\mathbf{0.96}$ & $\mathbf{0.97}$ & $\mathbf{0.97}$ & $\mathbf{0.97}$ & $\mathbf{0.98}$ & $\mathbf{0.85}$ & $\mathbf{0.82}$ & $\mathbf{0.78}$ & $1.20$ \\
-        3D single & $\mathbf{0.88}$ & $\mathbf{0.91}$ & $\mathbf{0.90}$ & $\mathbf{0.91}$ & $\mathbf{0.96}$ & $\mathbf{0.82}$ & $\mathbf{0.78}$ & $1.06$ & $1.03$ \\
+        3D double & $0.96$ & $0.97$ & $0.97$ & $0.97$ & $0.98$ & $0.85$ & $0.82$ & $0.78$ & $1.20$ \\
+        3D single & $0.88$ & $0.91$ & $0.90$ & $0.91$ & $0.96$ & $0.82$ & $0.78$ & $1.06$ & $1.03$ \\
         \bottomrule
     \end{tabular}
-    \caption{Speed-up of the bin sort plus the spreading stage with the selected configuration over the library defaults, for each test transform. Values below one (bold) are slowdowns.}
+    \caption{Speed-up of the bin sort plus the spreading stage with the selected configuration over the library defaults, for each test transform. Values below one are slowdowns.}
     \label{tab:app_selection_speedup}
 \end{table}
 
@@ -101,43 +102,43 @@ This section lists, for each of the $54$ test transforms of Table~\ref{tab:selec
         transforms & $0.125$ & $0.25$ & $0.5$ & $1$ & $2$ & $4$ & $8$ & $16$ & $32$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $20$ threads}} \\
-        1D double & $1.87$ & $1.40$ & $\mathbf{0.99}$ & $1.04$ & $1.01$ & $1.00$ & $1.00$ & $1.01$ & $1.00$ \\
-        1D single & $1.37$ & $1.01$ & $\mathbf{0.91}$ & $\mathbf{0.95}$ & $\mathbf{0.98}$ & $\mathbf{0.99}$ & $\mathbf{0.98}$ & $\mathbf{0.99}$ & $\mathbf{0.97}$ \\
-        2D double & $\mathbf{0.85}$ & $\mathbf{0.89}$ & $1.05$ & $1.18$ & $1.05$ & $1.13$ & $1.31$ & $1.42$ & $1.51$ \\
-        2D single & $1.08$ & $1.13$ & $\mathbf{0.96}$ & $1.04$ & $\mathbf{0.98}$ & $\mathbf{0.96}$ & $1.30$ & $1.35$ & $1.27$ \\
-        3D double & $1.05$ & $1.07$ & $1.10$ & $1.12$ & $1.07$ & $1.08$ & $\mathbf{0.92}$ & $\mathbf{0.83}$ & $1.19$ \\
-        3D single & $1.09$ & $1.11$ & $1.17$ & $1.16$ & $1.18$ & $1.17$ & $\mathbf{0.98}$ & $1.00$ & $\mathbf{0.95}$ \\
+        1D double & $1.87$ & $1.40$ & $0.99$ & $1.04$ & $1.01$ & $1.00$ & $1.00$ & $1.01$ & $1.00$ \\
+        1D single & $1.37$ & $1.01$ & $0.91$ & $0.95$ & $0.98$ & $0.99$ & $0.98$ & $0.99$ & $0.97$ \\
+        2D double & $0.85$ & $0.89$ & $1.05$ & $1.18$ & $1.05$ & $1.13$ & $1.31$ & $1.42$ & $1.51$ \\
+        2D single & $1.08$ & $1.13$ & $0.96$ & $1.04$ & $0.98$ & $0.96$ & $1.30$ & $1.35$ & $1.27$ \\
+        3D double & $1.05$ & $1.07$ & $1.10$ & $1.12$ & $1.07$ & $1.08$ & $0.92$ & $0.83$ & $1.19$ \\
+        3D single & $1.09$ & $1.11$ & $1.17$ & $1.16$ & $1.18$ & $1.17$ & $0.98$ & $1.00$ & $0.95$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $10$ threads}} \\
-        1D double & $1.10$ & $1.00$ & $1.00$ & $\mathbf{0.96}$ & $\mathbf{0.97}$ & $\mathbf{0.96}$ & $\mathbf{0.97}$ & $\mathbf{0.98}$ & $\mathbf{0.99}$ \\
-        1D single & $1.00$ & $\mathbf{0.94}$ & $\mathbf{0.93}$ & $\mathbf{0.97}$ & $\mathbf{0.99}$ & $\mathbf{0.98}$ & $\mathbf{0.98}$ & $1.00$ & $1.01$ \\
+        1D double & $1.10$ & $1.00$ & $1.00$ & $0.96$ & $0.97$ & $0.96$ & $0.97$ & $0.98$ & $0.99$ \\
+        1D single & $1.00$ & $0.94$ & $0.93$ & $0.97$ & $0.99$ & $0.98$ & $0.98$ & $1.00$ & $1.01$ \\
         2D double & $1.00$ & $1.10$ & $1.14$ & $1.43$ & $1.32$ & $1.17$ & $1.09$ & $1.22$ & $1.19$ \\
         2D single & $1.10$ & $1.24$ & $1.35$ & $1.28$ & $1.08$ & $1.08$ & $1.25$ & $1.26$ & $1.19$ \\
-        3D double & $1.14$ & $1.14$ & $1.17$ & $1.08$ & $\mathbf{0.98}$ & $\mathbf{0.92}$ & $\mathbf{0.89}$ & $1.01$ & $1.03$ \\
-        3D single & $1.11$ & $1.11$ & $1.17$ & $1.05$ & $\mathbf{0.99}$ & $\mathbf{0.95}$ & $1.04$ & $1.01$ & $1.09$ \\
+        3D double & $1.14$ & $1.14$ & $1.17$ & $1.08$ & $0.98$ & $0.92$ & $0.89$ & $1.01$ & $1.03$ \\
+        3D single & $1.11$ & $1.11$ & $1.17$ & $1.05$ & $0.99$ & $0.95$ & $1.04$ & $1.01$ & $1.09$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $1$ thread}} \\
-        1D double & $\mathbf{0.99}$ & $\mathbf{0.99}$ & $\mathbf{0.98}$ & $\mathbf{0.97}$ & $\mathbf{0.91}$ & $\mathbf{0.99}$ & $\mathbf{0.98}$ & $\mathbf{0.94}$ & $\mathbf{0.94}$ \\
-        1D single & $\mathbf{0.99}$ & $\mathbf{0.99}$ & $1.01$ & $\mathbf{0.98}$ & $\mathbf{0.94}$ & $\mathbf{0.96}$ & $\mathbf{0.95}$ & $\mathbf{0.98}$ & $1.01$ \\
-        2D double & $1.27$ & $1.01$ & $\mathbf{0.95}$ & $\mathbf{0.98}$ & $1.00$ & $1.00$ & $1.18$ & $1.13$ & $1.11$ \\
-        2D single & $1.00$ & $\mathbf{0.99}$ & $\mathbf{0.96}$ & $\mathbf{0.97}$ & $\mathbf{0.98}$ & $\mathbf{0.99}$ & $1.21$ & $1.23$ & $1.14$ \\
-        3D double & $\mathbf{0.83}$ & $\mathbf{0.90}$ & $1.04$ & $\mathbf{0.93}$ & $\mathbf{0.99}$ & $1.00$ & $\mathbf{0.99}$ & $\mathbf{0.97}$ & $1.03$ \\
-        3D single & $1.08$ & $\mathbf{0.98}$ & $\mathbf{0.97}$ & $1.01$ & $1.01$ & $\mathbf{0.98}$ & $1.00$ & $\mathbf{0.92}$ & $1.10$ \\
+        1D double & $0.99$ & $0.99$ & $0.98$ & $0.97$ & $0.91$ & $0.99$ & $0.98$ & $0.94$ & $0.94$ \\
+        1D single & $0.99$ & $0.99$ & $1.01$ & $0.98$ & $0.94$ & $0.96$ & $0.95$ & $0.98$ & $1.01$ \\
+        2D double & $1.27$ & $1.01$ & $0.95$ & $0.98$ & $1.00$ & $1.00$ & $1.18$ & $1.13$ & $1.11$ \\
+        2D single & $1.00$ & $0.99$ & $0.96$ & $0.97$ & $0.98$ & $0.99$ & $1.21$ & $1.23$ & $1.14$ \\
+        3D double & $0.83$ & $0.90$ & $1.04$ & $0.93$ & $0.99$ & $1.00$ & $0.99$ & $0.97$ & $1.03$ \\
+        3D single & $1.08$ & $0.98$ & $0.97$ & $1.01$ & $1.01$ & $0.98$ & $1.00$ & $0.92$ & $1.10$ \\
         \midrule
         \multicolumn{10}{l}{\emph{exponential distribution, $20$ threads}} \\
-        1D double & $1.33$ & $1.13$ & $1.00$ & $1.02$ & $\mathbf{0.99}$ & $\mathbf{0.98}$ & $\mathbf{0.98}$ & $1.00$ & $1.02$ \\
-        1D single & $1.10$ & $\mathbf{0.94}$ & $\mathbf{0.83}$ & $\mathbf{0.92}$ & $\mathbf{0.95}$ & $\mathbf{0.95}$ & $\mathbf{0.96}$ & $\mathbf{0.98}$ & $\mathbf{0.97}$ \\
-        2D double & $\mathbf{0.73}$ & $\mathbf{0.82}$ & $\mathbf{0.90}$ & $\mathbf{0.98}$ & $1.01$ & $1.22$ & $1.36$ & $1.44$ & $1.51$ \\
-        2D single & $\mathbf{0.91}$ & $\mathbf{0.93}$ & $\mathbf{0.94}$ & $\mathbf{0.99}$ & $1.12$ & $1.12$ & $1.25$ & $1.26$ & $1.26$ \\
-        3D double & $1.46$ & $1.43$ & $1.38$ & $1.31$ & $1.12$ & $1.00$ & $\mathbf{0.92}$ & $\mathbf{0.85}$ & $1.22$ \\
-        3D single & $1.35$ & $1.32$ & $1.29$ & $1.24$ & $1.12$ & $1.03$ & $\mathbf{0.92}$ & $1.05$ & $1.03$ \\
+        1D double & $1.33$ & $1.13$ & $1.00$ & $1.02$ & $0.99$ & $0.98$ & $0.98$ & $1.00$ & $1.02$ \\
+        1D single & $1.10$ & $0.94$ & $0.83$ & $0.92$ & $0.95$ & $0.95$ & $0.96$ & $0.98$ & $0.97$ \\
+        2D double & $0.73$ & $0.82$ & $0.90$ & $0.98$ & $1.01$ & $1.22$ & $1.36$ & $1.44$ & $1.51$ \\
+        2D single & $0.91$ & $0.93$ & $0.94$ & $0.99$ & $1.12$ & $1.12$ & $1.25$ & $1.26$ & $1.26$ \\
+        3D double & $1.46$ & $1.43$ & $1.38$ & $1.31$ & $1.12$ & $1.00$ & $0.92$ & $0.85$ & $1.22$ \\
+        3D single & $1.35$ & $1.32$ & $1.29$ & $1.24$ & $1.12$ & $1.03$ & $0.92$ & $1.05$ & $1.03$ \\
         \bottomrule
     \end{tabular}
-    \caption{Reduction of the CPU time of the spreading stage, the thread-seconds summed over all threads, with the selected configuration against the library defaults, for each test transform. Values below one (bold) mean more CPU time.}
+    \caption{Reduction of the CPU time of the spreading stage, the thread-seconds summed over all threads, with the selected configuration against the library defaults, for each test transform. Values below one mean more CPU time.}
     \label{tab:app_selection_work}
 \end{table}
 
-\section{Selection of $S_{\max}$ alone}
+\section{Selection of \texorpdfstring{$S_{\max}$}{Smax} alone}
 \label{app:selection_sp}
 
 This section repeats the comparison with the bins kept at the library default, $16$, $16 \times 4$ and $16 \times 4 \times 4$, and only $S_{\max}$ chosen by the selection procedure: the selected values in Table~\ref{tab:app_sp_picks}, the speed-up of the bin sort plus the spreading stage in Table~\ref{tab:app_sp_speedup}, and the reduction of the CPU time of the spreading stage in Table~\ref{tab:app_sp_work}. In three dimensions no bin larger than the default fits in L1d, so the full selection already keeps the default bins there and the three-dimensional rows are the same as in Section~\ref{app:selection}.
@@ -193,38 +194,38 @@ This section repeats the comparison with the bins kept at the library default, $
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $20$ threads}} \\
         1D double & $1.26$ & $1.17$ & $1.00$ & $1.00$ & $1.01$ & $1.00$ & $1.00$ & $1.00$ & $1.00$ \\
-        1D single & $1.08$ & $\mathbf{0.99}$ & $\mathbf{0.96}$ & $\mathbf{0.99}$ & $\mathbf{0.99}$ & $\mathbf{0.99}$ & $1.00$ & $\mathbf{0.99}$ & $1.00$ \\
-        2D double & $\mathbf{0.98}$ & $1.02$ & $1.09$ & $1.25$ & $1.08$ & $1.03$ & $1.22$ & $1.26$ & $1.23$ \\
+        1D single & $1.08$ & $0.99$ & $0.96$ & $0.99$ & $0.99$ & $0.99$ & $1.00$ & $0.99$ & $1.00$ \\
+        2D double & $0.98$ & $1.02$ & $1.09$ & $1.25$ & $1.08$ & $1.03$ & $1.22$ & $1.26$ & $1.23$ \\
         2D single & $1.17$ & $1.11$ & $1.14$ & $1.25$ & $1.09$ & $1.01$ & $1.02$ & $1.18$ & $1.15$ \\
-        3D double & $1.07$ & $1.08$ & $1.12$ & $1.15$ & $1.29$ & $1.16$ & $\mathbf{0.97}$ & $\mathbf{0.84}$ & $1.17$ \\
-        3D single & $1.13$ & $1.17$ & $1.21$ & $1.41$ & $1.37$ & $1.21$ & $1.02$ & $1.01$ & $\mathbf{0.97}$ \\
+        3D double & $1.07$ & $1.08$ & $1.12$ & $1.15$ & $1.29$ & $1.16$ & $0.97$ & $0.84$ & $1.17$ \\
+        3D single & $1.13$ & $1.17$ & $1.21$ & $1.41$ & $1.37$ & $1.21$ & $1.02$ & $1.01$ & $0.97$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $10$ threads}} \\
-        1D double & $1.04$ & $1.01$ & $1.00$ & $1.01$ & $1.00$ & $\mathbf{0.98}$ & $1.01$ & $\mathbf{0.99}$ & $1.01$ \\
-        1D single & $\mathbf{0.99}$ & $\mathbf{0.97}$ & $\mathbf{0.99}$ & $1.00$ & $\mathbf{0.99}$ & $1.00$ & $1.00$ & $1.00$ & $1.00$ \\
+        1D double & $1.04$ & $1.01$ & $1.00$ & $1.01$ & $1.00$ & $0.98$ & $1.01$ & $0.99$ & $1.01$ \\
+        1D single & $0.99$ & $0.97$ & $0.99$ & $1.00$ & $0.99$ & $1.00$ & $1.00$ & $1.00$ & $1.00$ \\
         2D double & $1.06$ & $1.07$ & $1.19$ & $1.38$ & $1.26$ & $1.09$ & $1.04$ & $1.15$ & $1.14$ \\
         2D single & $1.09$ & $1.15$ & $1.34$ & $1.26$ & $1.12$ & $1.04$ & $1.05$ & $1.13$ & $1.10$ \\
-        3D double & $\mathbf{0.98}$ & $\mathbf{0.99}$ & $1.02$ & $\mathbf{0.98}$ & $\mathbf{0.95}$ & $\mathbf{0.92}$ & $\mathbf{0.89}$ & $1.02$ & $1.02$ \\
-        3D single & $\mathbf{0.95}$ & $\mathbf{0.97}$ & $1.02$ & $\mathbf{0.96}$ & $\mathbf{0.94}$ & $\mathbf{0.92}$ & $1.05$ & $1.01$ & $1.08$ \\
+        3D double & $0.98$ & $0.99$ & $1.02$ & $0.98$ & $0.95$ & $0.92$ & $0.89$ & $1.02$ & $1.02$ \\
+        3D single & $0.95$ & $0.97$ & $1.02$ & $0.96$ & $0.94$ & $0.92$ & $1.05$ & $1.01$ & $1.08$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $1$ thread}} \\
-        1D double & $\mathbf{0.99}$ & $1.00$ & $\mathbf{0.96}$ & $\mathbf{0.97}$ & $1.00$ & $1.05$ & $1.04$ & $\mathbf{0.99}$ & $1.01$ \\
+        1D double & $0.99$ & $1.00$ & $0.96$ & $0.97$ & $1.00$ & $1.05$ & $1.04$ & $0.99$ & $1.01$ \\
         1D single & $1.03$ & $1.03$ & $1.05$ & $1.00$ & $1.04$ & $1.00$ & $1.00$ & $1.05$ & $1.00$ \\
-        2D double & $1.25$ & $1.04$ & $1.01$ & $\mathbf{0.99}$ & $\mathbf{0.96}$ & $1.00$ & $1.05$ & $1.05$ & $1.02$ \\
-        2D single & $1.01$ & $\mathbf{0.99}$ & $\mathbf{0.99}$ & $\mathbf{0.97}$ & $\mathbf{0.99}$ & $\mathbf{0.99}$ & $\mathbf{0.95}$ & $1.05$ & $1.05$ \\
-        3D double & $\mathbf{0.81}$ & $\mathbf{0.88}$ & $1.04$ & $\mathbf{0.94}$ & $\mathbf{0.99}$ & $1.00$ & $\mathbf{0.99}$ & $\mathbf{0.97}$ & $1.02$ \\
-        3D single & $1.07$ & $\mathbf{0.98}$ & $\mathbf{0.97}$ & $1.01$ & $1.02$ & $\mathbf{0.98}$ & $\mathbf{0.99}$ & $\mathbf{0.93}$ & $1.08$ \\
+        2D double & $1.25$ & $1.04$ & $1.01$ & $0.99$ & $0.96$ & $1.00$ & $1.05$ & $1.05$ & $1.02$ \\
+        2D single & $1.01$ & $0.99$ & $0.99$ & $0.97$ & $0.99$ & $0.99$ & $0.95$ & $1.05$ & $1.05$ \\
+        3D double & $0.81$ & $0.88$ & $1.04$ & $0.94$ & $0.99$ & $1.00$ & $0.99$ & $0.97$ & $1.02$ \\
+        3D single & $1.07$ & $0.98$ & $0.97$ & $1.01$ & $1.02$ & $0.98$ & $0.99$ & $0.93$ & $1.08$ \\
         \midrule
         \multicolumn{10}{l}{\emph{exponential distribution, $20$ threads}} \\
-        1D double & $1.19$ & $1.11$ & $1.00$ & $\mathbf{0.99}$ & $1.01$ & $\mathbf{0.99}$ & $1.00$ & $1.00$ & $1.00$ \\
-        1D single & $1.07$ & $1.01$ & $\mathbf{0.90}$ & $\mathbf{0.95}$ & $\mathbf{0.99}$ & $\mathbf{0.98}$ & $1.00$ & $1.00$ & $\mathbf{0.98}$ \\
+        1D double & $1.19$ & $1.11$ & $1.00$ & $0.99$ & $1.01$ & $0.99$ & $1.00$ & $1.00$ & $1.00$ \\
+        1D single & $1.07$ & $1.01$ & $0.90$ & $0.95$ & $0.99$ & $0.98$ & $1.00$ & $1.00$ & $0.98$ \\
         2D double & $1.42$ & $1.37$ & $1.62$ & $1.66$ & $1.28$ & $1.09$ & $1.32$ & $1.28$ & $1.29$ \\
         2D single & $1.84$ & $1.63$ & $1.93$ & $1.82$ & $1.35$ & $1.19$ & $1.06$ & $1.18$ & $1.16$ \\
-        3D double & $\mathbf{0.96}$ & $\mathbf{0.97}$ & $\mathbf{0.97}$ & $\mathbf{0.97}$ & $\mathbf{0.98}$ & $\mathbf{0.85}$ & $\mathbf{0.82}$ & $\mathbf{0.78}$ & $1.20$ \\
-        3D single & $\mathbf{0.88}$ & $\mathbf{0.91}$ & $\mathbf{0.90}$ & $\mathbf{0.91}$ & $\mathbf{0.96}$ & $\mathbf{0.82}$ & $\mathbf{0.78}$ & $1.06$ & $1.03$ \\
+        3D double & $0.96$ & $0.97$ & $0.97$ & $0.97$ & $0.98$ & $0.85$ & $0.82$ & $0.78$ & $1.20$ \\
+        3D single & $0.88$ & $0.91$ & $0.90$ & $0.91$ & $0.96$ & $0.82$ & $0.78$ & $1.06$ & $1.03$ \\
         \bottomrule
     \end{tabular}
-    \caption{Speed-up of the bin sort plus the spreading stage with the default bins and the selected $S_{\max}$ over the library defaults, for each test transform. Values below one (bold) are slowdowns.}
+    \caption{Speed-up of the bin sort plus the spreading stage with the default bins and the selected $S_{\max}$ over the library defaults, for each test transform. Values below one are slowdowns.}
     \label{tab:app_sp_speedup}
 \end{table}
 
@@ -239,38 +240,38 @@ This section repeats the comparison with the bins kept at the library default, $
         transforms & $0.125$ & $0.25$ & $0.5$ & $1$ & $2$ & $4$ & $8$ & $16$ & $32$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $20$ threads}} \\
-        1D double & $1.89$ & $1.39$ & $1.00$ & $1.00$ & $1.01$ & $1.01$ & $1.01$ & $\mathbf{0.99}$ & $1.00$ \\
-        1D single & $1.32$ & $\mathbf{0.99}$ & $\mathbf{0.92}$ & $\mathbf{0.97}$ & $\mathbf{0.98}$ & $\mathbf{0.97}$ & $1.01$ & $\mathbf{0.97}$ & $\mathbf{0.97}$ \\
-        2D double & $\mathbf{0.85}$ & $\mathbf{0.88}$ & $\mathbf{0.96}$ & $1.18$ & $1.05$ & $1.02$ & $1.34$ & $1.45$ & $1.44$ \\
-        2D single & $1.14$ & $1.11$ & $\mathbf{0.98}$ & $1.05$ & $1.00$ & $\mathbf{0.98}$ & $1.01$ & $1.33$ & $1.26$ \\
-        3D double & $1.05$ & $1.07$ & $1.10$ & $1.12$ & $1.07$ & $1.08$ & $\mathbf{0.92}$ & $\mathbf{0.83}$ & $1.19$ \\
-        3D single & $1.09$ & $1.11$ & $1.17$ & $1.16$ & $1.18$ & $1.17$ & $\mathbf{0.98}$ & $1.00$ & $\mathbf{0.95}$ \\
+        1D double & $1.89$ & $1.39$ & $1.00$ & $1.00$ & $1.01$ & $1.01$ & $1.01$ & $0.99$ & $1.00$ \\
+        1D single & $1.32$ & $0.99$ & $0.92$ & $0.97$ & $0.98$ & $0.97$ & $1.01$ & $0.97$ & $0.97$ \\
+        2D double & $0.85$ & $0.88$ & $0.96$ & $1.18$ & $1.05$ & $1.02$ & $1.34$ & $1.45$ & $1.44$ \\
+        2D single & $1.14$ & $1.11$ & $0.98$ & $1.05$ & $1.00$ & $0.98$ & $1.01$ & $1.33$ & $1.26$ \\
+        3D double & $1.05$ & $1.07$ & $1.10$ & $1.12$ & $1.07$ & $1.08$ & $0.92$ & $0.83$ & $1.19$ \\
+        3D single & $1.09$ & $1.11$ & $1.17$ & $1.16$ & $1.18$ & $1.17$ & $0.98$ & $1.00$ & $0.95$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $10$ threads}} \\
         1D double & $1.13$ & $1.01$ & $1.00$ & $1.00$ & $1.00$ & $1.00$ & $1.01$ & $1.00$ & $1.03$ \\
-        1D single & $1.00$ & $\mathbf{0.94}$ & $\mathbf{0.98}$ & $\mathbf{0.98}$ & $\mathbf{0.98}$ & $\mathbf{0.99}$ & $1.00$ & $1.00$ & $1.00$ \\
+        1D single & $1.00$ & $0.94$ & $0.98$ & $0.98$ & $0.98$ & $0.99$ & $1.00$ & $1.00$ & $1.00$ \\
         2D double & $1.01$ & $1.06$ & $1.14$ & $1.43$ & $1.34$ & $1.14$ & $1.05$ & $1.25$ & $1.21$ \\
         2D single & $1.10$ & $1.24$ & $1.35$ & $1.31$ & $1.12$ & $1.07$ & $1.06$ & $1.19$ & $1.14$ \\
-        3D double & $1.14$ & $1.14$ & $1.17$ & $1.08$ & $\mathbf{0.98}$ & $\mathbf{0.92}$ & $\mathbf{0.89}$ & $1.01$ & $1.03$ \\
-        3D single & $1.11$ & $1.11$ & $1.17$ & $1.05$ & $\mathbf{0.99}$ & $\mathbf{0.95}$ & $1.04$ & $1.01$ & $1.09$ \\
+        3D double & $1.14$ & $1.14$ & $1.17$ & $1.08$ & $0.98$ & $0.92$ & $0.89$ & $1.01$ & $1.03$ \\
+        3D single & $1.11$ & $1.11$ & $1.17$ & $1.05$ & $0.99$ & $0.95$ & $1.04$ & $1.01$ & $1.09$ \\
         \midrule
         \multicolumn{10}{l}{\emph{uniform distribution, $1$ thread}} \\
-        1D double & $1.00$ & $1.00$ & $\mathbf{0.97}$ & $\mathbf{0.99}$ & $1.00$ & $1.03$ & $1.02$ & $1.00$ & $1.00$ \\
-        1D single & $1.02$ & $1.02$ & $1.05$ & $1.00$ & $1.02$ & $1.00$ & $1.00$ & $1.03$ & $\mathbf{0.99}$ \\
-        2D double & $1.33$ & $1.06$ & $1.00$ & $1.00$ & $\mathbf{0.98}$ & $1.00$ & $1.02$ & $1.07$ & $1.06$ \\
-        2D single & $1.02$ & $\mathbf{0.99}$ & $\mathbf{0.98}$ & $\mathbf{0.98}$ & $1.00$ & $1.00$ & $\mathbf{0.98}$ & $1.08$ & $1.07$ \\
-        3D double & $\mathbf{0.83}$ & $\mathbf{0.90}$ & $1.04$ & $\mathbf{0.93}$ & $\mathbf{0.99}$ & $1.00$ & $\mathbf{0.99}$ & $\mathbf{0.97}$ & $1.03$ \\
-        3D single & $1.08$ & $\mathbf{0.98}$ & $\mathbf{0.97}$ & $1.01$ & $1.01$ & $\mathbf{0.98}$ & $1.00$ & $\mathbf{0.92}$ & $1.10$ \\
+        1D double & $1.00$ & $1.00$ & $0.97$ & $0.99$ & $1.00$ & $1.03$ & $1.02$ & $1.00$ & $1.00$ \\
+        1D single & $1.02$ & $1.02$ & $1.05$ & $1.00$ & $1.02$ & $1.00$ & $1.00$ & $1.03$ & $0.99$ \\
+        2D double & $1.33$ & $1.06$ & $1.00$ & $1.00$ & $0.98$ & $1.00$ & $1.02$ & $1.07$ & $1.06$ \\
+        2D single & $1.02$ & $0.99$ & $0.98$ & $0.98$ & $1.00$ & $1.00$ & $0.98$ & $1.08$ & $1.07$ \\
+        3D double & $0.83$ & $0.90$ & $1.04$ & $0.93$ & $0.99$ & $1.00$ & $0.99$ & $0.97$ & $1.03$ \\
+        3D single & $1.08$ & $0.98$ & $0.97$ & $1.01$ & $1.01$ & $0.98$ & $1.00$ & $0.92$ & $1.10$ \\
         \midrule
         \multicolumn{10}{l}{\emph{exponential distribution, $20$ threads}} \\
-        1D double & $1.30$ & $1.13$ & $1.01$ & $\mathbf{0.99}$ & $1.01$ & $\mathbf{0.99}$ & $1.00$ & $1.00$ & $1.00$ \\
-        1D single & $1.12$ & $1.00$ & $\mathbf{0.92}$ & $\mathbf{0.93}$ & $\mathbf{0.98}$ & $\mathbf{0.96}$ & $\mathbf{0.98}$ & $\mathbf{0.99}$ & $\mathbf{0.97}$ \\
-        2D double & $\mathbf{0.73}$ & $\mathbf{0.82}$ & $\mathbf{0.91}$ & $1.00$ & $1.04$ & $1.02$ & $1.42$ & $1.44$ & $1.48$ \\
-        2D single & $\mathbf{0.91}$ & $\mathbf{0.95}$ & $\mathbf{0.94}$ & $1.04$ & $1.09$ & $1.13$ & $1.06$ & $1.26$ & $1.24$ \\
-        3D double & $1.46$ & $1.43$ & $1.38$ & $1.31$ & $1.12$ & $1.00$ & $\mathbf{0.92}$ & $\mathbf{0.85}$ & $1.22$ \\
-        3D single & $1.35$ & $1.32$ & $1.29$ & $1.24$ & $1.12$ & $1.03$ & $\mathbf{0.92}$ & $1.05$ & $1.03$ \\
+        1D double & $1.30$ & $1.13$ & $1.01$ & $0.99$ & $1.01$ & $0.99$ & $1.00$ & $1.00$ & $1.00$ \\
+        1D single & $1.12$ & $1.00$ & $0.92$ & $0.93$ & $0.98$ & $0.96$ & $0.98$ & $0.99$ & $0.97$ \\
+        2D double & $0.73$ & $0.82$ & $0.91$ & $1.00$ & $1.04$ & $1.02$ & $1.42$ & $1.44$ & $1.48$ \\
+        2D single & $0.91$ & $0.95$ & $0.94$ & $1.04$ & $1.09$ & $1.13$ & $1.06$ & $1.26$ & $1.24$ \\
+        3D double & $1.46$ & $1.43$ & $1.38$ & $1.31$ & $1.12$ & $1.00$ & $0.92$ & $0.85$ & $1.22$ \\
+        3D single & $1.35$ & $1.32$ & $1.29$ & $1.24$ & $1.12$ & $1.03$ & $0.92$ & $1.05$ & $1.03$ \\
         \bottomrule
     \end{tabular}
-    \caption{Reduction of the CPU time of the spreading stage, the thread-seconds summed over all threads, with the default bins and the selected $S_{\max}$ against the library defaults, for each test transform. Values below one (bold) mean more CPU time.}
+    \caption{Reduction of the CPU time of the spreading stage, the thread-seconds summed over all threads, with the default bins and the selected $S_{\max}$ against the library defaults, for each test transform. Values below one mean more CPU time.}
     \label{tab:app_sp_work}
 \end{table}

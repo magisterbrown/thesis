@@ -1,3 +1,4 @@
+% !TEX root = ../main.tex
 \chapter{Analysis of the Upsampling Factor}
 \label{ch:sigma_selection}
 
@@ -5,12 +6,12 @@
 
 The upsampling factor, written $\sigma$ throughout this chapter and exposed by the library as \texttt{upsampfac}, is among the most impactful parameters in FINUFFT. It determines the size of the internal FFT grid relative to the output grid, and thus directly controls the memory footprint, cache behaviour, and compute cost of the transform. Raising $\sigma$ makes the FFT more expensive and spreading cheaper, so the two costs it trades have to be modelled separately before either can be reasoned about. This chapter derives a closed-form model for each of them at a given input configuration and tolerance requirement, and validates each against measurement: the spreading model in Section~\ref{sec:validate_spreading} and the FFT model in Section~\ref{sec:validate_fft}. The two are validated separately rather than summed into a single cost curve, so the chapter establishes how each term depends on $\sigma$ and how far each model can be trusted.
 
-\section{The Role of $\sigma$ in FINUFFT}
+\section{The Role of \texorpdfstring{$\sigma$}{σ} in FINUFFT}
 
 The upsampling factor $\sigma$ controls the size of the internal uniform FFT grid, which has $\sigma N$ points per dimension relative to the $N$ requested output modes. Increasing $\sigma$ enlarges the FFT grid, raising FFT cost, but simultaneously relaxes the tolerance requirement on the spreading kernel, permitting a smaller kernel half-width $w$. Because $w$ decreases and the grid size increases as $\sigma$ grows, there exists a value of $\sigma$ that minimises total transform cost for a given problem size, dimension, and tolerance.
 
-The spreading stage that $w$ parametrises is shown in
-Figure~\ref{fig:spreading_illustration}: each nonuniform point contributes its
+Figure~\ref{fig:sigma_tradeoff} shows the spreading stage that $w$ parametrises
+and how $w$ depends on $\sigma$. In Figure~\ref{fig:spreading_illustration}, each nonuniform point contributes its
 strength to the $w$ grid cells nearest it, weighted by the kernel, and the
 uniform array handed to the FFT is the sum of those contributions, so the cost
 of the step is set by how many cells each point is spread into.
@@ -20,7 +21,7 @@ $\sigma$ grows. Since each nonuniform point is spread into $w^d$ grid cells, a l
 $\sigma$ therefore lowers the cost of the spreading stage; the price is the larger FFT grid
 it implies, and it is this trade-off that the rest of the chapter quantifies.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \begin{subfigure}[b]{0.40\textwidth}
         \centering
@@ -39,7 +40,7 @@ it implies, and it is this trade-off that the rest of the chapter quantifies.
     \label{fig:sigma_tradeoff}
 \end{figure}
 
-\section{The Range of $\sigma$}
+\section{The Range of \texorpdfstring{$\sigma$}{σ}}
 \label{sec:sigma_range}
 
 Before asking which value of $\sigma$ is best, it is worth establishing which values are admissible at all. The aliasing law behind \eqref{eq:kernel_width} sets no lower bound above one: the error falls as $e^{-(w-1)\pi\sqrt{1-1/\sigma}}$, so as $\sigma$ approaches one the exponent vanishes and the width needed for a given tolerance grows without limit. What makes small $\sigma$ inadmissible in practice is that width. FINUFFT compiles its spreading kernels only up to $w = 16$ in double precision and $w = 12$ in single, and refuses a plan whose requested tolerance would need more, so each tolerance has a $\sigma$ below which the transform cannot be performed at all. Inverting \eqref{eq:kernel_width} at $w = 16$ in two dimensions gives $\sigma \ge 1.08$ at $\varepsilon = 10^{-6}$, $\sigma \ge 1.20$ at $10^{-9}$ and $\sigma \ge 1.45$ at $10^{-12}$: the tighter the tolerance, the narrower the admissible range becomes from below. The library adds two guards of its own, rejecting $\sigma \le 1$ outright and capping the width at $8$ for single precision below $\sigma = 1.4$, where the dynamic range of the kernel coefficients would otherwise cost more accuracy than the wider kernel gains.
@@ -48,7 +49,7 @@ The upper end is bounded by economics rather than by accuracy. Raising $\sigma$ 
 
 The interval studied in this chapter, $[1.25, 2.00]$, sits inside both bounds for every tolerance considered here. It is also the interval the library's own heuristic ranges over in the version measured, which is what makes the comparison in the rest of the chapter a fair one.
 
-\section{Current Heuristic for $\sigma$ Selection}
+\section{Current Heuristic for \texorpdfstring{$\sigma$}{σ} Selection}
 The current FINUFFT heuristic for $\sigma$ selection is a simple lookup: it returns one of only two possible values, $\sigma \in \{1.25, 2.00\}$. By default it returns $1.25$, but switches to $2.00$ when the point density $\rho = M/N$ exceeds a fixed threshold, or when the requested tolerance $\varepsilon$ is too tight for $\sigma = 1.25$ to reach. All upsampling factors in between are never considered, even though the true optimal $\sigma$ for a given problem often lies in the interior of $[1.25, 2.00]$.
 
 \section{Cost Model}
@@ -69,7 +70,7 @@ The theoretical spreading cost is therefore proportional to $M w^d$. In practice
 The FFT operates on the upsampled grid of total size $\tilde{N} = \mathrm{next235}(\sigma N)^d$, where $\mathrm{next235}(x)$ denotes the smallest integer $\geq x$ whose only prime factors are $2$, $3$, and $5$. Rounding up to such a highly composite number ensures the FFT can be decomposed into small radix-2, -3, and -5 butterflies, which most FFT libraries handle efficiently. The grid contributes $\mathcal{O}(\tilde{N} \log \tilde{N})$ operations, though the precise constant depends on the chosen FFT backend and cache effects, so this estimate is best treated as an asymptotic guide.
 
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/fft_cost/ducc_fft_scaling.pdf}
     \caption{DUCC FFT throughput for complex-to-complex transforms in one, two
@@ -108,7 +109,7 @@ $1/\log_2 \tilde{N}$ trend.
 
 To validate the $w^d$ scaling predicted by the model, spreading time was measured across one, two and three dimensions for a range of $\sigma$ values at tolerance $\varepsilon = 10^{-6}$. As shown in Figure~\ref{fig:sigma_sweep_1e6}, the theoretical curves follow the same trajectory as the measurements, including the location of the minimum. Throughput changes in steps, because spreading is vectorised and at every kernel size the number of operations rounds up to the nearest multiple of the SIMD width. Figure~\ref{fig:sigma_sweep_all} in Appendix~\ref{app:maxsp_sweeps} shows the same graphs for a range of common transform configurations at several tolerances.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/sigma_sweep/sigma_sweep_1e6.pdf}
     \caption{Measured spreading time and the modelled spreading cost against $\sigma$ at $\varepsilon = 10^{-6}$ in double precision, for one, two and three dimensions.}

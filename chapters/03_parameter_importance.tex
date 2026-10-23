@@ -1,3 +1,4 @@
+% !TEX root = ../main.tex
 \chapter{Exploring Parameter Importance}
 \label{ch:parameter_importance}
 
@@ -27,7 +28,7 @@ Every FINUFFT call proceeds through three stages, introduced in Chapter~\ref{ch:
 
 Using the benchmark configurations distributed with FINUFFT (covering a range of precisions, tolerances, dimensions, and both extremal values of $\sigma$), each call was timed and the three stage durations were normalised so that they summed to one. Figure~\ref{fig:stage_breakdown} shows the resulting distribution, split by transform type. For type 1 and type 2 transforms, \texttt{execute} dominates, accounting for the large majority of the total time, while \texttt{setpts} contributes a smaller but non-negligible share and \texttt{makeplan} is close to zero in almost every case. Type 3 transforms show a markedly different balance: \texttt{setpts} and \texttt{execute} contribute comparable shares, reflecting the additional preprocessing type 3 transforms require to handle nonuniform points on both sides of the transform.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=0.85\textwidth]{figures/parameter_importance/stage_breakdown.pdf}
     \caption{Fraction of total call time spent in each stage (\texttt{makeplan}, \texttt{setpts}, \texttt{execute}), by transform type.}
@@ -47,7 +48,7 @@ In the search, the best configuration found completed the transform in $1.643$\,
 
 Figure~\ref{fig:gp_histogram} shows the distribution of times across all completed trials on a logarithmic axis, with the default and the best configuration marked. The majority of trials cluster within a factor of a few of the default, and a right tail of badly performing configurations runs past the eight-second cap at which trials were stopped; the best configuration sits at the front edge of the main cluster rather than being an isolated outlier, indicating that a good configuration is common while a specific region of the search space is very bad.
 
-\begin{table}[h]
+\begin{table}[ht]
     \centering
     \begin{tabular}{lll}
         \hline
@@ -64,7 +65,7 @@ Figure~\ref{fig:gp_histogram} shows the distribution of times across all complet
     \label{tab:gp_best}
 \end{table}
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/parameter_importance_2d/optuna_histogram_2d.pdf}
     \caption{Distribution of measured times across the search trials, with the library default and the best configuration found marked; trials slower than the eight-second cap were stopped there rather than measured.}
@@ -73,7 +74,7 @@ Figure~\ref{fig:gp_histogram} shows the distribution of times across all complet
 
 To quantify the relative contribution of each parameter, functional ANOVA (fANOVA) importance scores~\cite{hutter2014fanova} were computed from the completed trials. Figure~\ref{fig:importance} shows the result in two panels. Over all trials \texttt{spread\_sort} accounts for $99.5\%$ of the variance in execution time, because leaving the points unsorted at this size costs an order of magnitude or more and swamps every other effect; no other parameter reaches $1\%$. Conditioning on the trials that sort, which is the regime any sensible configuration is in, ranks the rest against each other: \texttt{upsampfac} dominates at $53.8\%$, the two bin dimensions contribute $32.2\%$ and $9.5\%$, \texttt{spread\_max\_sp\_size} ($S_{\max}$) $3.2\%$, and \texttt{spread\_nthr\_atomic} only $1.3\%$. The last of these is a genuine measurement over the whole of that parameter's effective range: the spreader gives every thread one subproblem and only subdivides further when \texttt{spread\_max\_sp\_size} ($S_{\max}$) falls below $M/n_{\mathrm{thr}}$, so values above that bound are indistinguishable from it and the search covered everything below.
 
-\begin{figure}[h]
+\begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/parameter_importance_2d/importance_2d.pdf}
     \caption{Relative parameter importance from functional ANOVA, over all search trials and over the trials with sorting enabled.}
@@ -91,7 +92,7 @@ The objective and the search space were the same as in Section~\ref{sec:gp_sensi
 
 Table~\ref{tab:opentuner_best} gives the configuration it found. Measured three times against the defaults on the same node, it completes the transform in $1.732$\,s against $2.142$\,s, a reduction of $19.1\%$ or a speedup of $1.24$. The margin is close to the $23.3\%$ of Section~\ref{sec:gp_sensitivity}, and the two searches agree on where it comes from: sorting on, atomic updates, $\sigma$ at its default, and a subproblem size near $10^3$ rather than the $10^5$ the library selects. They disagree only on the bin dimensions, $30 \times 121$ here against $258 \times 9$ there, which the flat basin of the best twenty trials suggests is the parameter the objective is least sensitive to.
 
-\begin{table}[h]
+\begin{table}[ht]
     \centering
     \begin{tabular}{lll}
         \hline

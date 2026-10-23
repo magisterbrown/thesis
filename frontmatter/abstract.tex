@@ -1,3 +1,4 @@
+% !TEX root = ../main.tex
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 
@@ -18,16 +19,22 @@ parameters that reach those stages ranks them by the variance in execution time
 they account for, and each of the parameters that ranks highly is then swept
 individually across dimensions, point densities, requested tolerances and thread
 counts. Where a cost follows from the structure of the algorithm it is derived in
-closed form and validated against measurement.
+closed form and validated against measurement. For the spreader parameters,
+these models are then combined into a procedure that selects the parameter
+values before the transform runs.
 
 Every parameter examined trades one stage against another, so its best value
 lies between the extremes rather than at either end. For a two-dimensional
-transform of a gibibyte of nonuniform points, the subproblem size that minimises
-the spreading stage is roughly fifty times smaller than the constant the library
-selects, which costs a factor of $1.44$ in that stage; across the range the
-parameter can take, the stage varies by a factor of $1.71$. 
+transform of a gibibyte of nonuniform points, the subproblem size at which the
+spreading stage is fastest is twelve times smaller than the constant the library
+selects, and moves $6.4$ lines per point between the processor and memory
+against $8.2$ at the default. 
 Searching the six parameters together yields a configuration that runs
-$23\%$ faster than the defaults.
+$23\%$ faster than the defaults. The proposed procedure, which chooses the sort
+bin dimensions and the subproblem size from a model of memory traffic without
+measuring the input, makes the bin sort and spreading $1.49$ times faster than
+the defaults on geometric mean over $54$ transforms on $20$ threads, and slower
+on only three of them.
 
 The thesis contributes a measurement of where a transform spends its time at the
 level of individual stages, a ranking of the parameters that govern them, and a
@@ -36,6 +43,10 @@ within one percent without measuring it. It explains each trade-off in terms of 
 specific threshold in the memory hierarchy, and it identifies the quantities --
 cache sizes, point density, dimension and thread count -- from which those
 thresholds can be computed for a machine and an input that were never benchmarked.
+Finally, it proposes and evaluates a selection procedure for the spreader
+parameters built on those thresholds, and identifies where it fails: at low
+thread counts, under load imbalance, and with clustered points in three
+dimensions.
 
 \vspace{1cm}
 \noindent\textbf{Keywords:} FINUFFT, nonuniform FFT, parameter selection, performance analysis
