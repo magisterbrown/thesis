@@ -19,9 +19,7 @@ Each parameter moves the total, and there are two kinds of parameters.
 Four of them -- the upsampling factor, the maximum subproblem size and the two bin dimensions -- reduce the cost of one stage only by raising the cost of another. The cost as a function of such a parameter is a sum of two opposing terms, so the best value lies where they balance rather than at either extreme. The remaining two do not balance two
 stages against each other. Sorting is a binary choice, and it should be enabled
 for any input of a realistic size. The synchronisation threshold is an integer that may take any value, but the library compares it with the thread count and nothing else. All it selects is which of two implementations of the adding stage runs: a critical section when the thread count does not exceed it, atomic updates when it does. Its effect is therefore a step rather than a
-balance, and only its position relative to the thread count matters. Which side
-of that step is faster reverses with the thread count itself: below roughly ten
-threads the critical section wins, above it the atomic updates do.
+balance, and only its position relative to the thread count matters.
 
 Where those balance points lie is a property of the problem and of the machine,
 not of the library, and the quantities that fix them are few. The point density
@@ -46,7 +44,7 @@ For the spreader parameters the predictable part is enough to choose a configura
 \label{sec:rq_answers}
 
 \paragraph{RQ1: Which of FINUFFT's configuration parameters affect performance?}
-Six of the options the library carries reach the stages in which the time is spent, and all six change the execution time of a transform: whether the nonuniform points are sorted (\texttt{spread\_sort}), the upsampling factor (\texttt{upsampfac}), the maximum number of points in a spreading subproblem (\texttt{spread\_max\_sp\_size}), the thread count above which the adding stage switches from a critical section to atomic updates (\texttt{spread\_nthr\_atomic}), and the dimensions of the boxes into which the points are sorted ($b_x$, $b_y$, $b_z$), which the released library fixes at compile time. Section~\ref{sec:main_findings} gives the share of the variation that each accounts for. 
+Six of the options the library carries reach the stages in which the time is spent, and all six change the execution time of a transform: whether the nonuniform points are sorted (\texttt{spread\_sort}), the upsampling factor (\texttt{upsampfac}), the maximum number of points in a spreading subproblem (\texttt{spread\_max\_sp\_size}), the thread count above which the adding stage switches from a critical section to atomic updates (\texttt{spread\_nthr\_atomic}), and the dimensions of the boxes into which the points are sorted ($b_x$, $b_y$, $b_z$), which the released library fixes at compile time. Chapter~\ref{ch:parameter_importance} gives the share of the variation that each accounts for. 
 
 \paragraph{RQ2: Through which mechanism does each of those parameters act, and
 what fixes the point at which its trade-off balances?} 
@@ -79,7 +77,7 @@ predicted well enough to weigh against it.
 \section{Limitations}
 \label{sec:limitations}
 
-The measurements throughout were taken on one machine, the Intel Xeon E5-2698 v4 of Section~\ref{sec:platform}, and the thresholds that turn out to matter most are expressed in terms of its cache sizes. The models are written in terms of those sizes rather than in absolute numbers, so they transfer in principle, but this was not verified on hardware with a different cache hierarchy, a different core count, or a memory system of a different bandwidth. Two of the mechanisms identified here depend on more than the cache sizes alone. The point at which gathering leaves the second-level cache depends on how many hardware threads share it, and the cost of memory contention at large subproblem sizes depends on the bandwidth available to each thread.
+The measurements throughout were taken on one machine, the Intel Xeon E5-2698 v4 of Section~\ref{sec:platform}, and the thresholds that turn out to matter most are expressed in terms of its cache sizes. The models are written in terms of those sizes rather than in absolute numbers, so they transfer in principle, but this was not verified on hardware with a different cache hierarchy, a different core count, or a memory system of a different bandwidth. Two of the mechanisms identified here depend on more than the cache sizes alone. The point at which the staging buffer leaves a thread's share of the last-level cache depends on how many threads share that cache, and the cost of memory contention at large subproblem sizes depends on the bandwidth available to each thread.
 
 The parameter search of Chapter~\ref{ch:parameter_importance} likewise covers a single workload; its ranking of the parameters is specific to that workload, and the analysis chapters show directly that a parameter which is insensitive at one density and thread count is decisive at another. The analyses concentrate on type-1 transforms, mostly in double precision, since that is the path the spreader takes; type-2 interpolation reuses the same subproblem structure but was not measured separately, and type~3 was not examined beyond the stage breakdown.
 

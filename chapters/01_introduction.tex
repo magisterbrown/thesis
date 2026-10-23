@@ -239,11 +239,9 @@ on those models.
     The point density affects whether gathering or adding sets the best
     subproblem size; the sort bin dimensions act on three stages through three
     different quantities, the sort through the size of its counter array against
-    the first-level cache, spreading through the area a bin covers against the
-    first and second levels, and adding through the size of the subgrids the
-    resulting point order produces; and the choice between a critical section
-    and atomic updates reverses between low and high thread counts, by a margin
-    that depends on how many subproblems the transform is divided into.
+    each thread's share of the last-level cache, spreading through the padded
+    area a bin covers against the first-level cache, and adding through the size of the subgrids the
+    resulting point order produces.
 \end{itemize}
 
 \paragraph{Modelling.}
@@ -290,8 +288,7 @@ the field for the two chapters that follow.
 Chapter~\ref{ch:sigma_selection} takes the upsampling factor, the highest-ranked
 of them, and analyses and models the two costs it trades against each other.
 Chapter~\ref{ch:parameter_tuning} does the same for the parameters that govern
-the spreader -- the maximum subproblem size, the sort bin dimensions and the
-choice of synchronisation -- and derives the model of subgrid size on which
+the spreader -- the maximum subproblem size and the sort bin dimensions -- and derives the model of subgrid size on which
 their behaviour rests; it then combines these results into a model of memory
 traffic, proposes a procedure that selects the bin dimensions and the maximum
 subproblem size from it, and evaluates that procedure on $54$ transforms.
