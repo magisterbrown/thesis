@@ -55,7 +55,17 @@
 \begin{document}
 
 \setpagecolor{tudelft-cyan}
-\makecover
+% Cover-only layout: wider title leading and a ragged subtitle; the plain
+% title and subtitle are restored for the title page.
+\makeatletter
+\let\plaintitle\@title
+\let\plainsubtitle\@subtitle
+\def\@title{\parbox[t]{\linewidth}{\fontsize{96}{78}\selectfont\plaintitle}}
+\def\@subtitle{\parbox[t]{\linewidth}{\vspace{8mm}\raggedright\fontsize{22}{27}\selectfont\plainsubtitle}}
+\makecover[frontboxheight=6.1in, y=6.9in]
+\let\@title\plaintitle
+\let\@subtitle\plainsubtitle
+\makeatother
 
 \frontmatter
 
