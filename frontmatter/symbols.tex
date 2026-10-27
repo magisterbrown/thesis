@@ -1,0 +1,34 @@
+\chapter*{List of Symbols}
+\addcontentsline{toc}{chapter}{List of Symbols}
+
+\noindent
+\begin{tabularx}{\textwidth}{@{}l l X@{}}
+\toprule
+\textbf{Symbol} & \textbf{Unit} & \textbf{Meaning} \\
+\midrule
+\multicolumn{3}{@{}l}{\emph{Problem}} \\
+$M$             & points     & number of nonuniform points \\
+$d$             & ---        & number of dimensions, $1$, $2$ or $3$ \\
+$N$, $N_1$, $N_2$, $N_d$ & modes & requested output modes, in total and per axis \\
+$\tilde{N}$     & cells      & cells of the fine grid, $\mathrm{next235}(\sigma N)^d$ \\
+$\rho$          & points/cell & point density, $M / \tilde{N}$ \\
+$\varepsilon$   & ---        & requested tolerance \\
+$n_{\mathrm{thr}}$ & threads & threads used by the transform \\
+\addlinespace
+\multicolumn{3}{@{}l}{\emph{Configuration parameters}} \\
+$\sigma$        & ---        & upsampling factor, \texttt{upsampfac} \\
+$S_{\max}$      & points     & maximum points in a subproblem, \texttt{spread\_max\_sp\_size} \\
+$b_x$, $b_y$, $b_z$ & cells  & sort bin dimensions along each axis \\
+\addlinespace
+\multicolumn{3}{@{}l}{\emph{Derived quantities}} \\
+$w$             & cells      & kernel width, derived from $\varepsilon$ and $\sigma$ \\
+$\varphi$, $\hat{\varphi}$ & --- & spreading kernel and its Fourier transform \\
+$n_{\mathrm{sub}}$ & ---     & subproblems the transform is divided into, $\lceil M / S_{\max} \rceil$ \\
+$n_{\mathrm{bins}}$ & ---    & sort bins covering the fine grid \\
+$n_b$           & ---        & bins a subproblem's points occupy \\
+$x_{\mathrm{ext}}$ & cells   & extent of a subgrid along the fastest axis \\
+$A(S_{\max})$   & cells      & average subgrid size produced by a subproblem \\
+$B(S_{\max})$   & bytes      & staging buffer a thread fills, $S_{\max}\,\texttt{sizeof(FLT)}\,(d+2)$ \\
+$W_{\mathrm{simd}}$ & cells  & SIMD vector width in grid points \\
+\bottomrule
+\end{tabularx}
