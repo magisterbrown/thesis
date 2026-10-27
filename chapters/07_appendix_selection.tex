@@ -2,7 +2,7 @@
 \section{Selection results for every test transform}
 \label{app:selection}
 
-This section lists, for each of the $54$ test transforms of Table~\ref{tab:selection_results}, the configuration chosen by the selection procedure and its effect against the library defaults: the bin dimensions and $S_{\max}$ in Table~\ref{tab:app_selection_picks}, the speed-up of the bin sort plus the spreading stage in Table~\ref{tab:app_selection_speedup}, and the reduction of the CPU time of the spreading stage in Table~\ref{tab:app_selection_work}. Every ratio is the value with the defaults divided by the value with the selected configuration, so values below one mark transforms that became slower or used more CPU time. Each value is the best of two runs.
+This section lists, for each of the $54$ test transforms of Table~\ref{tab:selection_results}, the configuration chosen by the selection procedure and its effect against the library defaults: the bin dimensions and $S_{\max}$ in Table~\ref{tab:app_selection_picks}, the speed-up of the bin sort plus the spreading stage in Table~\ref{tab:app_selection_speedup}, and the throughput improvement of the spreading stage, measured as its CPU time, in Table~\ref{tab:app_selection_work}. Every ratio is the value with the defaults divided by the value with the selected configuration, so values below one mark transforms that became slower or used more CPU time. Each value is the best of two runs.
 
 \begin{table}[p]
     \centering
@@ -141,7 +141,7 @@ This section lists, for each of the $54$ test transforms of Table~\ref{tab:selec
 \section{Selection of \texorpdfstring{$S_{\max}$}{Smax} alone}
 \label{app:selection_sp}
 
-This section repeats the comparison with the bins kept at the library default, $16$, $16 \times 4$ and $16 \times 4 \times 4$, and only $S_{\max}$ chosen by the selection procedure: the selected values in Table~\ref{tab:app_sp_picks}, the speed-up of the bin sort plus the spreading stage in Table~\ref{tab:app_sp_speedup}, and the reduction of the CPU time of the spreading stage in Table~\ref{tab:app_sp_work}. In three dimensions no bin larger than the default fits in L1d, so the full selection already keeps the default bins there and the three-dimensional rows are the same as in Section~\ref{app:selection}.
+This section repeats the comparison with the bins kept at the library default, $16$, $16 \times 4$ and $16 \times 4 \times 4$, and only $S_{\max}$ chosen by the selection procedure: the selected values in Table~\ref{tab:app_sp_picks}, the speed-up of the bin sort plus the spreading stage in Table~\ref{tab:app_sp_speedup}, and the throughput improvement of the spreading stage, measured as its CPU time, in Table~\ref{tab:app_sp_work}. In three dimensions no bin larger than the default fits in L1d, so the full selection already keeps the default bins there and the three-dimensional rows are the same as in Section~\ref{app:selection}.
 
 \begin{table}[p]
     \centering
