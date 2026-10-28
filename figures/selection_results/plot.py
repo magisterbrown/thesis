@@ -33,6 +33,8 @@ TITLES = {
                 "improvement over the library defaults"),
     "sp": (r"Wall-clock speed-up of the bin sort and spreading stage, $S_{\max}$ only",
            "speed-up over the library defaults"),
+    "bins_work": ("Throughput of the spreading stage improvement, bin dimensions only",
+                  r"improvement over selecting $S_{\max}$ alone"),
 }
 
 
