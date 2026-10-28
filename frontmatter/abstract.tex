@@ -2,51 +2,36 @@
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 
-The nonuniform fast Fourier transform underlies image reconstruction in magnetic
-resonance imaging, gridding in radio interferometry and particle-mesh methods in
-molecular dynamics. FINUFFT is one of the fastest and most widely used
-implementations, which makes the values it selects for its configuration
-parameters consequential: they are constants compiled into the library, chosen
-once for a particular machine and workload, while the transforms it is asked to
-perform differ in dimension, point density, requested accuracy and thread count.
-How much performance those constants leave unused, and for what reason, has not
-been measured.
+Nonuniform fast Fourier transforms are widely used for image reconstruction,
+data analysis and the numerical solution of differential equations. FINUFFT is
+one of the fastest and most widely used implementations, but its parameters are
+fixed defaults, tuned once by its developers, while the transforms it performs
+vary in dimension, point density, accuracy and thread count. 
 
-This thesis instruments FINUFFT so that the cost of each stage of a transform
-can be attributed to that stage alone, using timers placed inside its parallel
-region together with hardware performance counters. A joint search over the six
-parameters that reach those stages ranks them by the variance in execution time
-they account for, and each of the parameters that ranks highly is then swept
-individually across dimensions, point densities, requested tolerances and thread
-counts. Where a cost follows from the structure of the algorithm it is derived in
-closed form and validated against measurement. For the spreader parameters,
-these models are then combined into a procedure that selects the parameter
-values before the transform runs.
+The aim of this thesis is to determine how FINUFFT's parameters affect its
+running time and to derive models that select their values before a transform
+runs.
 
-Every parameter examined trades one stage against another, so its best value
-lies between the extremes rather than at either end. For a two-dimensional
-transform of a gibibyte of nonuniform points, the subproblem size at which the
-spreading stage is fastest is twelve times smaller than the constant the library
-selects, and moves $6.4$ lines per point between the processor and memory
-against $8.2$ at the default. 
-Searching the six parameters together yields a configuration that runs
-$23\%$ faster than the defaults. The proposed procedure, which chooses the sort
-bin dimensions and the subproblem size from a model of memory traffic without
-measuring the input, makes the bin sort and spreading $1.50$ times faster than
-the defaults on geometric mean over $54$ transforms on $20$ threads, and slower
-on only three of them.
+We instrument FINUFFT so that the cost of each stage of a transform can be
+measured separately, using timers inside its parallel region and hardware
+performance counters. A joint search over six parameters estimates how much
+faster a tuned configuration can be than the defaults. For the upsampling
+factor, the sort bin size and the maximum subproblem size, we derive
+closed-form performance models and validate them against measurements.
 
-The thesis contributes a measurement of where a transform spends its time at the
-level of individual stages, a ranking of the parameters that govern them, and a
-closed-form model of subgrid size that predicts the cost of the adding stage to
-within one percent without measuring it. It explains each trade-off in terms of a
-specific threshold in the memory hierarchy, and it identifies the quantities --
-cache sizes, point density, dimension and thread count -- from which those
-thresholds can be computed for a machine and an input that were never benchmarked.
-Finally, it proposes and evaluates a selection procedure for the spreader
-parameters built on those thresholds, and identifies where it fails: at low
-thread counts, under load imbalance, and with clustered points in three
-dimensions.
+Every parameter affects performance nonlinearly, trading the cost of one stage
+against another. The joint search finds a configuration $23\%$ faster than the
+defaults. The upsampling factor model captures the trade-off between the FFT
+and spreading stages. A selection procedure for the bin size and maximum
+subproblem size, built on these models, achieves $1.50$ times higher throughput
+than the defaults on multithreaded transforms.
+
+Each trade-off is governed by the
+cache sizes and the properties of the transform. For the bin size and maximum
+subproblem size, this is enough to choose good values before the transform
+runs. The gains are largest for multithreaded transforms, where spreading is
+limited by memory bandwidth.
+
 
 \vspace{1cm}
 \noindent\textbf{Keywords:} FINUFFT, nonuniform FFT, parameter selection, performance analysis
