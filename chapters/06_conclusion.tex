@@ -62,9 +62,9 @@ that is faster than the library defaults?} For the bin dimensions and the maximu
 subproblem size, yes. The selection procedure of Chapter~\ref{ch:parameter_tuning}
 uses only the dimension, precision, grid size, number of points, kernel width,
 thread count and cache sizes, and takes well under a millisecond. On $20$ threads
-it is faster than the defaults on $51$ of $54$ transforms and $1.49$ times faster
-on geometric mean, with the largest gains in one dimension ($2.06$ to $2.17$
-times) and the smallest in three ($1.09$ to $1.16$ times), where no bin larger
+it is faster than the defaults on $51$ of $54$ transforms and $1.50$ times faster
+on geometric mean, with the largest gains in one dimension ($2.05$ to $2.15$
+times) and the smallest in three ($1.08$ to $1.16$ times), where no bin larger
 than the default fits in the first-level cache and only $S_{\max}$ changes. The
 gains shrink with the thread count, to $1.23$ times on ten threads and $1.07$ on
 one, because spreading is then limited by latency and computation rather than by
