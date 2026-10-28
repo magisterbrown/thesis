@@ -20,10 +20,12 @@ SEGMENTS = (("uniform_20", r"uniform distribution, $20$ threads"),
             ("exponential_20", r"exponential distribution, $20$ threads"))
 GROUPS = tuple(f"{d}D {p}" for d in (1, 2, 3) for p in ("double", "single"))
 DENSITIES = ("0.125", "0.25", "0.5", "1", "2", "4", "8", "16", "32")
-# label -> table name in the CSVs
+# label -> table name in the CSVs, or a list of (panel heading, table name)
 CHAPTER = {"tab:selection_results": "speedup",
            "tab:selection_work": "work",
-           "tab:selection_sp_work": "sp_work"}
+           "tab:selection_split": [
+               (r"$S_{\max}$ alone, against the library defaults", "sp_work"),
+               (r"bin dimensions in addition, against $S_{\max}$ alone", "bins_work")]}
 APPENDIX = {"tab:app_selection_speedup": "speedup",
             "tab:app_selection_work": "work",
             "tab:app_sp_speedup": "sp",
@@ -60,9 +62,16 @@ def main():
         text = path.read_text()
         for label, name in labels.items():
             if builder == "chapter":
-                lines = [row(g, chapter[name][g], 9) for g in GROUPS]
-                lines += ["        \\midrule",
-                          row(r"all $54$", chapter[name]["all 54"], 0)]
+                panels = name if isinstance(name, list) else [(None, name)]
+                lines = []
+                for i, (heading, table) in enumerate(panels):
+                    if i:
+                        lines.append("        \\midrule")
+                    if heading:
+                        lines.append(f"        \\multicolumn{{5}}{{l}}{{\\emph{{{heading}}}}} \\\\")
+                    lines += [row(g, chapter[table][g], 9) for g in GROUPS]
+                    lines.append("        \\cmidrule(lr){1-5}" if heading else "        \\midrule")
+                    lines.append(row(r"all $54$", chapter[table]["all 54"], 0))
             else:
                 lines = []
                 for i, (seg, caption) in enumerate(SEGMENTS):
