@@ -159,7 +159,7 @@ Table~\ref{tab:subgrid_pred} compares the three predictions against subgrid size
         \caption{3D, $N_x = N_y = N_z = 215$.}
         \label{tab:subgrid_3d}
     \end{subtable}
-    \caption{Predicted against measured subgrid size, from \eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and \eqref{eq:subgrid_3d}, at unit density with $M = 10^7$.}
+    \caption{Predicted and measured subgrid size, unit density, $M = 10^7$.}
     \label{tab:subgrid_pred}
 \end{table}
 
@@ -393,7 +393,7 @@ lines per nonuniform point, where a missed \texttt{ret} line costs $7/8$ of a li
         $1024\times256$ & 132.4 & 16.5 & 55.55 & 0.686 & 0.634 \\
         \hline
     \end{tabular}
-    \caption{Spreading against the bin dimensions: the padded bin relative to the L1d and L2 caches, the cycles spreading takes, and the L1 and L2 miss rates, for a 2D, $1$\,GiB, unit-density transform on the test platform of Section~\ref{sec:platform}.}
+    \caption{Spreading cost against the bin dimensions, 2D, $1$\,GiB, unit density.}
     \label{tab:spread_l2}
 \end{table}
 
@@ -445,7 +445,7 @@ Table~\ref{tab:selection_results} compares the selected configurations with the 
         all $54$ & $1.49$ & $1.23$ & $1.07$ & $1.40$ \\
         \bottomrule
     \end{tabular}
-    \caption{Geometric average speed-up of the bin sort plus the spreading stage with the selected bin dimensions and $S_{\max}$ over the library defaults, over the nine densities of each row.}
+    \caption{Speed-up of sort plus spreading, selected against default configuration.}
     \label{tab:selection_results}
 \end{table}
 
@@ -460,28 +460,28 @@ Table~\ref{tab:selection_results} compares the selected configurations with the 
         \cmidrule(lr){2-4} \cmidrule(lr){5-5}
         transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
         \midrule
-        1D double & $1.12$ & $0.99$ & $0.97$ & $1.05$ \\
-        1D single & $1.01$ & $0.98$ & $0.98$ & $0.95$ \\
-        2D double & $1.13$ & $1.18$ & $1.07$ & $1.07$ \\
-        2D single & $1.11$ & $1.20$ & $1.05$ & $1.08$ \\
-        3D double & $1.04$ & $1.04$ & $0.96$ & $1.17$ \\
-        3D single & $1.09$ & $1.06$ & $1.00$ & $1.14$ \\
+        1D double & $2.10$ & $1.43$ & $1.08$ & -- \\
+        1D single & $2.12$ & $1.51$ & -- & -- \\
+        2D double & $1.28$ & $1.18$ & -- & -- \\
+        2D single & $1.37$ & $1.25$ & -- & -- \\
+        3D double & $1.04$ & $1.04$ & -- & -- \\
+        3D single & $1.08$ & $1.05$ & -- & -- \\
         \midrule
-        all $54$ & $1.08$ & $1.07$ & $1.00$ & $1.07$ \\
+        all $54$ & $1.44$ & $1.23$ & -- & -- \\
         \bottomrule
     \end{tabular}
-    \caption{Geometric average throughput improvement of the spreading stage, measured as its CPU time, the thread-seconds summed over all threads, with the selected bin dimensions and $S_{\max}$ against the library defaults, over the nine densities of each row: the CPU time with the defaults divided by the CPU time with the selected configuration.}
+    \caption{Throughput improvement of sort plus spreading, selected against default configuration.}
     \label{tab:selection_work}
 \end{table}
 
 
-Table~\ref{tab:selection_work} separates the spreading stage's CPU time, the time summed over all threads, from its wall time. The CPU time falls by $8\%$ on geometric mean on $20$ threads and by $7\%$ on $10$, and is unchanged on one thread, so the selected configurations make each thread do less rather than merely move the same work around. The contrast with Table~\ref{tab:selection_results} is sharpest in three dimensions with exponentially distributed points: the CPU time falls by $14$ to $17\%$, yet the wall time rises, because the large selected $S_{\max}$ leaves each thread only a few subproblems of very different cost and the threads that finish early wait for the others.
+Table~\ref{tab:selection_work} separates the CPU time of the same two stages, the time summed over all threads, from their wall time. On $20$ threads the selected configurations need $1.44$ times less CPU time than the defaults on geometric mean, so they make each thread do less rather than merely move the same work around. The sort accounts for most of it: its CPU time falls $2.25$ times, against $1.10$ times for the spreading stage. The reduction is largest in one dimension, $2.10$ to $2.12$ times, where the default bins are smallest relative to the cache, and smallest in three, $1.04$ to $1.08$ times, where the bins stay at the default and only $S_{\max}$ changes. On $10$ threads the reduction is smaller, $1.23$ times: the sort saves less, $1.52$ times, while the spreading stage saves as much as on $20$ threads, $1.07$ times.
 
 On $20$ threads, the configuration the procedure was designed for, the selection is faster on $51$ of the $54$ transforms and $1.49$ times faster on geometric mean. Most of the gain is in the sort, which the larger bins make $2.2$ times faster on geometric mean, and the largest gains are in one dimension, where the default bins are smallest relative to the cache. In three dimensions the bins stay at $16 \times 4 \times 4$, since no larger bin fits in L1d, and only $S_{\max}$ changes; the three transforms that became slower are all of this kind, with a selected $S_{\max}$ large enough to leave each thread only a few subproblems, so that the work is unevenly divided among the threads, an effect the traffic estimate does not contain. With fewer threads the gains shrink, because spreading is then limited by latency and computation rather than by bandwidth, and in three dimensions the selection is no better than the defaults.
 
-With exponentially distributed points the selection is $1.40$ times faster on geometric mean. One and two dimensions still gain throughout, by $1.79$ and $1.57$ to $1.72$ times: the sort gains about as much as with uniform points, and in two dimensions spreading gains more, $1.5$ to $1.6$ times, because the larger bins suit the clustered points. Three dimensions, however, become slower in $15$ of their $18$ transforms, by up to $22\%$. The selected $S_{\max}$ there is large, so each thread receives only a few subproblems, and with clustered points those subproblems differ widely in cost; the losses are largest at the densities where the selected $S_{\max}$ is largest. The traffic estimate assumes uniform points and has no term for this imbalance.
+With exponentially distributed points the selection is $1.40$ times faster on geometric mean. One and two dimensions still gain throughout, by $1.79$ and $1.57$ to $1.72$ times: the sort gains about as much as with uniform points, and in two dimensions spreading gains more, $1.5$ to $1.6$ times, because the larger bins suit the clustered points. Three dimensions, however, become slower in $15$ of their $18$ transforms, by up to $22\%$. The selected $S_{\max}$ there is large, so each thread receives only a few subproblems, and with clustered points those subproblems differ widely in cost; the losses are largest at the densities where the selected $S_{\max}$ is largest. The loss is one of load balance, not of efficiency: Table~\ref{tab:selection_work} shows that the selected configurations still need less CPU time than the defaults in three dimensions, so the threads do less work in total, but the threads that finish early wait for the one holding the most expensive subproblem. The traffic estimate assumes uniform points and has no term for this imbalance.
 
-To separate the two parameters, the comparison was repeated with the bins kept at the library default and only $S_{\max}$ chosen by the procedure; Table~\ref{tab:selection_sp_work} gives the result, and Appendix~\ref{app:selection_sp} the values for every transform. In three dimensions nothing changes, since the full selection keeps the default bins there as well. In one and two dimensions $S_{\max}$ alone gains far less than the joint selection: $1.09$ times on geometric mean over all $54$ transforms on $20$ threads against $1.49$, and almost nothing in one dimension, where the whole gain of the joint selection comes from the sort. The CPU time of the spreading stage, on the other hand, falls by about as much as with the joint selection, $7\%$ against $8\%$ on $20$ threads. Choosing $S_{\max}$ is thus what reduces the work of the spreading stage, and choosing the bins is what speeds up the sort; with exponentially distributed points in two dimensions, where $S_{\max}$ alone already gains $1.36$ to $1.43$ times, the bins add a further $15$ to $20\%$.
+To separate the two parameters, the comparison was repeated with the bins kept at the library default and only $S_{\max}$ chosen by the procedure; Table~\ref{tab:selection_sp_work} gives the result, and Appendix~\ref{app:selection_sp} the values for every transform. In three dimensions nothing changes, since the full selection keeps the default bins there as well. In one and two dimensions $S_{\max}$ alone saves far less than the joint selection: on $20$ threads the CPU time of the sort plus the spreading stage falls $1.06$ times on geometric mean over all $54$ transforms, against $1.44$, and only $1.01$ to $1.08$ times in one dimension, where the sort dominates. On $10$ threads the picture is the same, $1.05$ times against $1.23$.
 
 \begin{table}[ht]
     \centering
@@ -494,17 +494,17 @@ To separate the two parameters, the comparison was repeated with the bins kept a
         \cmidrule(lr){2-4} \cmidrule(lr){5-5}
         transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
         \midrule
-        1D double & $1.11$ & $1.02$ & $1.00$ & $1.04$ \\
-        1D single & $1.01$ & $0.99$ & $1.02$ & $0.98$ \\
-        2D double & $1.11$ & $1.17$ & $1.05$ & $1.06$ \\
-        2D single & $1.09$ & $1.17$ & $1.01$ & $1.06$ \\
-        3D double & $1.04$ & $1.04$ & $0.96$ & $1.17$ \\
-        3D single & $1.09$ & $1.06$ & $1.00$ & $1.14$ \\
+        1D double & $1.08$ & $1.01$ & $0.98$ & -- \\
+        1D single & $1.01$ & $0.99$ & -- & -- \\
+        2D double & $1.08$ & $1.12$ & -- & -- \\
+        2D single & $1.07$ & $1.13$ & -- & -- \\
+        3D double & $1.04$ & $1.04$ & -- & -- \\
+        3D single & $1.08$ & $1.05$ & -- & -- \\
         \midrule
-        all $54$ & $1.07$ & $1.07$ & $1.01$ & $1.08$ \\
+        all $54$ & $1.06$ & $1.05$ & -- & -- \\
         \bottomrule
     \end{tabular}
-    \caption{Geometric average throughput improvement of the spreading stage, measured as its CPU time, the thread-seconds summed over all threads, with the default bins and the selected $S_{\max}$ against the library defaults, over the nine densities of each row.}
+    \caption{Throughput improvement of sort plus spreading, $S_{\max}$ only against default configuration.}
     \label{tab:selection_sp_work}
 \end{table}
 
