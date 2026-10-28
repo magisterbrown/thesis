@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""The three selection tables of Chapter 6 drawn as grouped bars.
+"""The selection tables of Chapter 6 drawn as grouped bars.
 
-Data: data.csv, transcribed from the tables. Each row is a class of transform,
-each bar one column of the table: three thread counts with uniformly
-distributed points, and twenty threads with exponentially distributed ones.
-Values are ratios against the library defaults, so the line at one separates a
-gain from a loss, and the aggregate over all 54 transforms is set apart at the
-bottom.
+Data: data.csv, written by gen_data.py from the raw logs in raw/. Each row is a
+class of transform, each bar one column of the table: three thread counts with
+uniformly distributed points, and twenty threads with exponentially distributed
+ones. Values are ratios against the library defaults, so the line at one
+separates a gain from a loss, and the aggregate over all 54 transforms is set
+apart at the bottom.
 
-Writes selection_{speedup,work,sp_work}.{pdf,png} next to this script.
+Both the wall-clock and the CPU-time plots cover the bin sort and the spreading
+stage together, since the bin dimensions act on the two as one: larger bins cost
+the sort less and the spreading stage more.
+
+Writes selection_{speedup,work,sp,sp_work,bins_work}.{pdf,png} next to this
+script.
 """
 import csv
 import pathlib
@@ -24,16 +29,18 @@ COLS = (("uniform_20", "#2a78d6", "uniform, 20 threads"),
         ("uniform_10", "#6fa8e8", "uniform, 10 threads"),
         ("uniform_1", "#b9d4f5", "uniform, 1 thread"),
         ("exponential_20", "#f0a202", "exponential, 20 threads"))
+STAGES = "the bin sort and spreading stage"
 TITLES = {
-    "speedup": ("Wall-clock speed-up of the bin sort and spreading stage",
+    "speedup": (f"Wall-clock speed-up of {STAGES}",
                 "speed-up over the library defaults"),
-    "work": ("Throughput of the spreading stage improvement",
+    "work": (f"Throughput improvement of {STAGES}, "
+             r"$S_{\max}$ and bin dimensions",
              "improvement over the library defaults"),
-    "sp_work": (r"Throughput of the spreading stage improvement, $S_{\max}$ only",
-                "improvement over the library defaults"),
-    "sp": (r"Wall-clock speed-up of the bin sort and spreading stage, $S_{\max}$ only",
+    "sp": (f"Wall-clock speed-up of {STAGES}, " r"$S_{\max}$ only",
            "speed-up over the library defaults"),
-    "bins_work": ("Throughput of the spreading stage improvement, bin dimensions only",
+    "sp_work": (f"Throughput improvement of {STAGES}, " r"$S_{\max}$ only",
+                "improvement over the library defaults"),
+    "bins_work": (f"Throughput improvement of {STAGES}, bin dimensions only",
                   r"improvement over selecting $S_{\max}$ alone"),
 }
 
