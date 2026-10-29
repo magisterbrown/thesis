@@ -2,6 +2,13 @@
 \chapter{Background}
 \label{ch:background}
 
+This chapter introduces the background the rest of the thesis builds on. It
+first describes the nonuniform fast Fourier transform and how FINUFFT structures
+it into stages, with particular attention to the spreading stage that most of
+the parameters studied here act on. It then reviews related work: earlier
+approaches to choosing NUFFT parameters, other NUFFT libraries, the FFT library
+used as a backend, and the tools and models used to analyse performance.
+
 \section{Nonuniform Fast Fourier Transforms}
 
 The standard Discrete Fourier Transform (DFT) operates on uniformly sampled data. Many practical applications, however, involve data sampled at irregular (nonuniform) locations. The Nonuniform Fast Fourier Transform (NUFFT) generalizes the FFT to handle such data efficiently.

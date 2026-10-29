@@ -2,8 +2,6 @@
 \chapter{Exploring Parameter Importance}
 \label{ch:parameter_importance}
 
-\section{Overview}
-
 Before attempting to optimize FINUFFT's parameters, it is necessary to understand which parameters actually matter and to what degree. This chapter presents a global sensitivity analysis of FINUFFT's configuration space.  We first identify where transform time is actually spent across the three transform types (Section~\ref{sec:stage_breakdown}), then use a global, Gaussian process based search to rank the tunable parameters by their contribution to performance (Section~\ref{sec:gp_sensitivity}). The resulting ranking motivates the choice of parameters treated in depth in Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning}.
 
 \section{FINUFFT's Configuration Parameters}

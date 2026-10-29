@@ -9,11 +9,11 @@
 %\section{Overview}
 
 
+This chapter turns to the two parameters of the spreader, the maximum subproblem size and the bin dimensions; the upsampling factor was treated in Chapter~\ref{ch:sigma_selection}. It has two parts. The first analyses how the two parameters affect the throughput of the sort and spreading stages and derives the quantities that determine it: the average subgrid size (Section~\ref{sec:subgrid_size}), the trade-off the maximum subproblem size governs, and the cache limits on the bin dimensions. The second part combines those results into a model of the memory traffic of the bin sort and the spreading stage, proposes a procedure that uses it to choose both parameters before a transform runs (Section~\ref{sec:selection_algorithm}), and evaluates that procedure against the library defaults on test transforms (Section~\ref{sec:selection_results}).
+
 \section{Parameters Under Consideration}
 
-Beyond $\sigma$, which was treated in Chapter~\ref{ch:sigma_selection}, the parameters examined in this chapter are the maximum subproblem size and the bin dimensions.
-
-FINUFFT spreads the nonuniform points onto the uniform grid in two steps: the points are first sorted into bins, and then processed in batches, the subproblems. This chapter has two parts. The first analyses how the two parameters affect the throughput of these stages and derives the quantities that determine it: the average subgrid size (Section~\ref{sec:subgrid_size}), the trade-off the maximum subproblem size governs, and the cache limits on the bin dimensions. The second part combines those results into a model of the memory traffic of the bin sort and the spreading stage, proposes a procedure that uses it to choose both parameters before a transform runs (Section~\ref{sec:selection_algorithm}), and evaluates that procedure against the library defaults on test transforms (Section~\ref{sec:selection_results}).
+FINUFFT spreads the nonuniform points onto the uniform grid in two steps: the points are first sorted into bins, and then processed in batches, the subproblems. The maximum subproblem size sets how many points a batch may hold, and the bin dimensions set the size of the bins.
 
 \section{Spreading Is Memory Bound}
 \label{sec:memory_bound}

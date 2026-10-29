@@ -2,8 +2,6 @@
 \chapter{Analysis of the Upsampling Factor}
 \label{ch:sigma_selection}
 
-\section{Overview}
-
 The upsampling factor, written $\sigma$ throughout this chapter and exposed by the library as \texttt{upsampfac}, is among the most impactful parameters in FINUFFT. It determines the size of the internal FFT grid relative to the output grid, and thus directly controls the memory footprint, cache behaviour, and compute cost of the transform. Raising $\sigma$ makes the FFT more expensive and spreading cheaper, so the two costs it trades have to be modelled separately before either can be reasoned about. This chapter derives a closed-form model for each of them at a given input configuration and tolerance requirement, and validates each against measurement: the spreading model in Section~\ref{sec:validate_spreading} and the FFT model in Section~\ref{sec:validate_fft}. The two are validated separately rather than summed into a single cost curve, so the chapter establishes how each term depends on $\sigma$ and how far each model can be trusted.
 
 \section{The Role of \texorpdfstring{$\sigma$}{σ} in FINUFFT}
