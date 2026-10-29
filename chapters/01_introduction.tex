@@ -128,8 +128,7 @@ apply the idea to arbitrary programs. What all of these produce is a
 configuration that is fast for a specific input, on the machine where the search
 was run.
 
-They do not produce an explanation, and three things follow from that. A search
-executes many transforms before it returns anything, so it repays itself only when
+A search executes many transforms before it returns anything, so it repays itself only when
 the same plan is executed many times, which is not how a library call is
 typically used. Its answer carries no reason, so nothing about it transfers: a
 value found at one point density, or on one cache hierarchy, says nothing about
@@ -138,48 +137,21 @@ the transform it improved, because it sees only the total. That last limitation
 is not an accident of how searches are built. A parameter that halves the cost
 of one stage and doubles the cost of another leaves the total unchanged, so an
 end-to-end timing reports no effect where two large effects have cancelled.
-Measuring the stages separately is not straightforward either: gathering,
-spreading and adding all run inside a single OpenMP parallel region -- one
-block of code that every thread executes at once, each on its own subproblem --
-so no timer placed outside the library can separate them.
 
-The missing knowledge is therefore not which configuration is fastest, which a
-search can already find, but how the cost of each stage depends on each
-parameter, and what fixes the point at which the opposing effects balance. With
-that, the cases in which the library's defaults are adequate could be
-distinguished from those in which they are not.
+\section{Aim and Scope}
+\label{sec:aim_scope}
 
-\section{Thesis Objective and Scope}
-
-The objective of this thesis is to explain how FINUFFT's configuration
-parameters determine the time a transform takes, to model those effects in terms
-of quantities known before the transform runs, and to use the models to choose
-better values than the defaults. Section~\ref{sec:research_questions} breaks
-this objective into three research questions.
-
-The study is limited in four ways. It examines \emph{type-1 transforms}, in
-which scattered points are spread onto a uniform grid; type-2 transforms are not
-measured, and a type-3 transform appears only in the stage breakdown of
-Chapter~\ref{ch:parameter_importance}. All three dimensions are covered, with
-the two-dimensional case as the reference workload, mostly in double precision;
-single precision is measured where it matters, in
-Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning}. All
-measurements were taken on a \emph{single machine}, the Intel Xeon E5-2698 v4
-described in Section~\ref{sec:platform}, referred to as the machine under test.
-Finally, \emph{accuracy is held fixed}: FINUFFT derives the kernel width from the
-requested tolerance, so every configuration compared meets the same error
-target.
-
-The parameters studied are those listed in
-Section~\ref{sec:problem_statement}, with the bin dimensions counting as two
-parameters, $b_x$ and $b_y$, in the two-dimensional reference workload, six in
-total. The bin dimensions had to be exposed as run-time options first, since
-the released library fixes them at compile time. The remaining options are
-excluded because they do not affect the transforms studied here;
-Section~\ref{sec:finufft_parameters} lists them and gives the reason in each
-case. The upsampling factor, the maximum subproblem size and the bin dimensions
-are modelled, and for the latter two the thesis also proposes and evaluates a
-selection procedure.
+The aim of this thesis is to explain how FINUFFT's configuration parameters
+affect the cost of each stage of a type-1 transform, in which scattered points
+are spread onto a uniform grid, and to use that explanation to choose better
+parameter values than the defaults before the transform runs. To this end,
+type-1 transforms of different dimensions, precisions and point densities are
+benchmarked, and the duration of each stage is measured separately. The
+dependencies between the cost of each stage, the parameters of the transform and
+the characteristics of the CPU, such as its cache sizes, are then analysed, and
+models are developed that predict performance from them. Finally, these models
+are evaluated before a transform runs to select configuration parameters, that
+provide better performance than the library defaults.
 
 \section{Thesis Organization}
 

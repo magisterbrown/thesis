@@ -65,9 +65,9 @@ where the fine grid exceeds the last-level cache, so for the upsampling factor i
 
 Because the models are written in terms of the point density, tolerance, dimension, thread count and cache sizes rather than measured times, they are expected to carry over to other machines. This was not tested: all measurements were taken on one machine, and the fitted ramp ends would need to be measured again on another (Section~\ref{sec:limitations}).
 
-\paragraph{RQ3: Can such models explain when FINUFFT's default heuristics work
-well and when they do not, and choose a better configuration before a transform
-runs?} The models explain where the defaults fall short. The default bins of
+\paragraph{RQ3: Can such models choose a better configuration before a
+transform runs?} The models first show why there is room to improve on the
+defaults. The default bins of
 $16 \times 4$ cells leave a per-thread histogram of $2.85$\,MB on the reference
 transform, against a $2.5$\,MB share of L3 on $20$ threads, so the sort is
 already past its cache threshold; in one dimension the histogram runs to one or
