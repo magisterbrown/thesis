@@ -43,23 +43,39 @@ For the spreader parameters the predictable part is enough to choose a configura
 \section{Answers to the Research Questions}
 \label{sec:rq_answers}
 
-\paragraph{RQ1: Which of FINUFFT's configuration parameters affect performance?}
-Six of the options the library carries reach the stages in which the time is spent, and all six change the execution time of a transform: whether the nonuniform points are sorted (\texttt{spread\_sort}), the upsampling factor (\texttt{upsampfac}), the maximum number of points in a spreading subproblem (\texttt{spread\_max\_sp\_size}), the thread count above which the adding stage switches from a critical section to atomic updates (\texttt{spread\_nthr\_atomic}), and the dimensions of the boxes into which the points are sorted ($b_x$, $b_y$, $b_z$), which the released library fixes at compile time. Chapter~\ref{ch:parameter_importance} gives the share of the variation that each accounts for. 
+\paragraph{RQ1: Which of FINUFFT's configuration parameters affect performance
+significantly on the machine under test?}
+Six of the options the library carries reach the stages in which the time is spent, and all six change the execution time of a transform: whether the nonuniform points are sorted (\texttt{spread\_sort}), the upsampling factor (\texttt{upsampfac}), the maximum number of points in a spreading subproblem (\texttt{spread\_max\_sp\_size}), the thread count above which the adding stage switches from a critical section to atomic updates (\texttt{spread\_nthr\_atomic}), and the dimensions of the boxes into which the points are sorted ($b_x$, $b_y$, $b_z$), which the released library fixes at compile time. Chapter~\ref{ch:parameter_importance} gives the share of the variation that each accounts for.
 
-\paragraph{RQ2: Through which mechanism does each of those parameters act, and
-what fixes the point at which its trade-off balances?} 
-Four of the six parameters speed up one stage and slow another, so each has an interior optimum; sorting and the synchronisation threshold, as Section~\ref{sec:main_findings} describes, select between alternatives instead. The upsampling factor trades spreading against the FFT: raising $\sigma$ narrows the kernel, making spreading cheaper, and enlarges the fine grid the FFT must transform (Chapter~\ref{ch:sigma_selection}). The maximum subproblem size trades gathering against adding (Chapter~\ref{ch:parameter_tuning}). Adding falls as subproblems grow, because the padding of every subgrid is paid once per subproblem; gathering rises once the per-thread staging buffer no longer fits in that thread's share of L3, because its lines must then be fetched from memory each time a subproblem is gathered and spread. The sort bin dimensions act on three stages through three quantities: the sort through the size of its per-thread counter array against that thread's share of L3, spreading through the padded region a bin covers against L1 and L2, and adding through the size of the subgrids the resulting point order produces. Where each balance lies is fixed by four properties of the problem and one of the machine. The point density decides how large a region a subproblem's points cover. The tolerance sets the kernel width, and with it the padding around every subgrid, which the dimension then multiplies along every axis. The thread count decides how many threads compete for memory, since gathering slows down only when many of them do. And the cache sizes set the thresholds above.
+Four of the six speed up one stage and slow another, so each has an interior optimum; sorting and the synchronisation threshold select between alternatives instead. The upsampling factor trades spreading against the FFT: raising $\sigma$ narrows the kernel, making spreading cheaper, and enlarges the fine grid the FFT must transform (Chapter~\ref{ch:sigma_selection}). The maximum subproblem size trades gathering against adding: adding falls as subproblems grow, because the padding of every subgrid is paid once per subproblem, while gathering rises once the per-thread staging buffer no longer fits in that thread's share of L3. The bin dimensions act on three stages: the sort through the size of its per-thread counter array against that thread's share of L3, spreading through the padded region a bin covers against L1 and L2, and adding through the size of the subgrids the resulting point order produces (Chapter~\ref{ch:parameter_tuning}).
 
-\paragraph{RQ3: Which of those costs can be written in closed form accurately
-enough to choose a value without measuring it?} The subgrid a configuration produces is predicted to
+\paragraph{RQ2: Can models describe how changing each parameter affects the
+cost of the individual stages of the transform?} For the upsampling factor, the
+maximum subproblem size and the bin dimensions, yes, though not all to the same
+degree. The subgrid a configuration produces is predicted to
 within a percent, and with it the cost of the adding stage, which is
 proportional to the cells written; the cost of spreading as a function of the
 upsampling factor is reproduced in all three dimensions. The costs that follow from the memory hierarchy are located by thresholds, each given by the capacity of a cache level divided by the bytes a stage holds per unit of the parameter: the maximum subproblem size at which the staging buffer outgrows a thread's share of the last-level cache; the bin dimensions at which the counter array the sort keeps per thread outgrows that same share; and the bin dimensions at which the region a bin covers, padded by the kernel width, leaves the first-level cache. The first two enter a closed-form estimate of the DRAM lines the bin sort and the spreading stage move per point, through ramps whose ends are fitted once on the machine; over $360$ measured configurations its median error is $7\%$, and it ranks configurations better than it predicts their absolute traffic. The third is used as a hard limit on the bins rather than costed. Ranking is what choosing requires, and it holds wherever spreading is bound by bandwidth, which on this machine means from about ten threads upwards. The model of the FFT cost is the weakest, holding only
 where the fine grid exceeds the last-level cache, so for the upsampling factor it ranks candidates but does not predict their cost.
 
-\paragraph{RQ4: Can such models choose, before a transform runs, a configuration
-that is faster than the library defaults?} For the bin dimensions and the maximum
-subproblem size, yes. The selection procedure of Chapter~\ref{ch:parameter_tuning}
+Because the models are written in terms of the point density, tolerance, dimension, thread count and cache sizes rather than measured times, they are expected to carry over to other machines. This was not tested: all measurements were taken on one machine, and the fitted ramp ends would need to be measured again on another (Section~\ref{sec:limitations}).
+
+\paragraph{RQ3: Can such models explain when FINUFFT's default heuristics work
+well and when they do not, and choose a better configuration before a transform
+runs?} The models explain where the defaults fall short. The default bins of
+$16 \times 4$ cells leave a per-thread histogram of $2.85$\,MB on the reference
+transform, against a $2.5$\,MB share of L3 on $20$ threads, so the sort is
+already past its cache threshold; in one dimension the histogram runs to one or
+two million counters and overflows every level of the cache. The default
+$S_{\max} = 10^5$ moves $8.2$ lines per point between the processor and memory,
+against $6.4$ at $S_{\max} = 8000$, where the stage is fastest. In three
+dimensions, by contrast, even the default bin exceeds the first-level cache once
+padded, so no larger bin is admissible and the procedure keeps it. The upsampling factor
+heuristic considers only $1.25$ and $2$, although the balance between spreading
+and the FFT often lies between them.
+
+For the bin dimensions and the maximum subproblem size, the models also choose a
+better configuration. The selection procedure of Chapter~\ref{ch:parameter_tuning}
 uses only the dimension, precision, grid size, number of points, kernel width,
 thread count and cache sizes, and takes well under a millisecond. On $20$ threads
 it is faster than the defaults on $51$ of $54$ transforms and $1.50$ times faster
