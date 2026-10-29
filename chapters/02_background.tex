@@ -30,7 +30,7 @@ FINUFFT~\cite{barnett2019} exposes this algorithm through three calls, and the p
 
 \texttt{setpts} accepts the nonuniform points, and its main task is to sort them. In recent versions it also revisits the choice of upsampling factor once the point density is known.
 
-\texttt{execute} performs the transform in three phases. For a type 1, it spreads the nonuniform strengths onto the fine grid, transforms that grid with the FFT, and deconvolves each mode. A type 2 runs the same phases in reverse: it scales the uniform inputs by the reciprocal kernel coefficients, applies the FFT, and interpolates the values at the nonuniform points from the fine grid.
+\texttt{execute} performs the transform in three phases. For a type 1, it spreads the nonuniform strengths onto the fine grid, transforms that grid with the FFT, and deconvolves each mode. A type 2 runs the same phases in reverse. It scales the uniform inputs by the reciprocal kernel coefficients, applies the FFT, and interpolates the values at the nonuniform points from the fine grid.
 
 \subsection{Type 3 as a composition of types 1 and 2}
 
@@ -43,7 +43,7 @@ The spreading stage is the one this thesis is most concerned with, and it is not
 \section{Related Work}
 \label{sec:related_work}
 
-Work related to this thesis falls into three groups: approaches to choosing the configuration of an FFT or NUFFT library, the ways NUFFT implementations organise spreading, and the tools used to explain where a program spends its time. This section reviews each group, describes the FFT library used in this thesis, and closes with the research gap.
+Work related to this thesis falls into three groups. The first concerns how FFT and NUFFT libraries choose their configuration, the second how NUFFT implementations organise spreading, and the third the tools used to explain where a program spends its time. This section reviews each group, describes the FFT library used in this thesis, and closes with the research gap.
 
 \subsection{Choosing a configuration}
 \label{sec:related_tuning}
