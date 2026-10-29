@@ -150,7 +150,7 @@ benchmarked, and the duration of each stage is measured separately. The
 dependencies between the cost of each stage, the parameters of the transform and
 the characteristics of the CPU, such as its cache sizes, are then analysed, and
 models are developed that predict performance from them. Finally, these models
-are evaluated before a transform runs to select configuration parameters, that
+are evaluated before a transform runs to select configuration parameters that
 provide better performance than the library defaults.
 
 \section{Thesis Organization}
@@ -219,9 +219,11 @@ on those models.
     data no longer fit in cache, because threads competed for memory, or
     because some threads had more work than others.
 
-    \item \textbf{An instrumented build in which the bin dimensions are
-    settable.} Bin dimensiosn are compile-time constants in the released library, and
-    exposing them as options is what makes it possible to study bin size effects on performance.
+    \item \textbf{Bin dimensions exposed as public options.} The bin dimensions
+    are compile-time constants in the released library. They are added as fields
+    of the public options structure, \texttt{finufft\_opts}, so that they can be
+    set at run time like any other parameter and their effect on performance
+    studied.
 \end{itemize}
 
 \paragraph{Empirical}
