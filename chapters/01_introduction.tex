@@ -2,8 +2,8 @@
 \chapter{Introduction}
 \label{ch:introduction}
 
-This thesis studies how the configuration parameters of FINUFFT, a widely used
-library for the nonuniform fast Fourier transform, affect the time a transform
+This thesis studies how the different configuration parameters of FINUFFT, a widely used
+library for the nonuniform Fast Fourier Transform (FFT), affect the time a transform
 takes. It also asks whether that effect can be modelled well enough to choose
 better values than the library's defaults. This chapter explains why the
 question matters, states the problem and the scope of the study, and sets out
@@ -53,9 +53,8 @@ dimensions set the size of the boxes the points are sorted into before
 spreading.
 
 Two properties make FINUFFT a suitable subject for studying how these parameters
-affect performance. It is in production use, so its behaviour affects real
-workloads rather than a benchmark written for the occasion. And it is built like
-the other implementations of the algorithm, sorting the points into bins and
+affect performance. FINUFFT is a product widely used and any improvement in its behaviour will have direct impact on real
+workloads and not on benchmarks with little or no practical use. Its inner organization resembels all other implementations of the algorithm, sorting the points into bins and
 spreading them in independent subproblems. What is learned about where its time
 goes is therefore not peculiar to it.
 
@@ -73,9 +72,8 @@ this thesis.
 \section{Problem Statement}
 \label{sec:problem_statement}
 
-FINUFFT chooses the values of its configuration parameters automatically, but
-mostly from fixed constants or simple rules rather than from the transform at
-hand. The user may override all of them except the bin dimensions:
+FINUFFT is built to choose the values of its configuration parameters automatically. Typically the selection originates from fixed constants or simple rules rather than from the transform at
+hand. The user may override all of them except the bin dimensions. More precisely, the parameters are:
 \begin{itemize}
     \item the \emph{upsampling factor} $\sigma$ is $1.25$, or $2$ when the point
     density or the requested accuracy is high;
@@ -89,8 +87,8 @@ hand. The user may override all of them except the bin dimensions:
     \item the \emph{atomic-update threshold} is $10$ threads.
 \end{itemize}
 These defaults were tuned by the authors for common combinations of transform
-and CPU. They stay the same, however, while transforms vary widely in
-dimension, point density, accuracy, thread count and the machine they run on.
+and CPU. They stay the same, however, while performed FFT transforms vary widely in
+dimension, point density, accuracy, thread count and the specific machine organization they run on.
 
 The right value is hard to guess because each parameter affects performance
 nonlinearly, through more than one stage of the transform. A type-1 transform
@@ -190,18 +188,10 @@ This thesis addresses three questions.
     raises.
 
     \item \textbf{Can models describe how changing each parameter affects the
-    cost of the individual stages of the transform?} An answer gives a model of
-    the cost of each stage a parameter acts on. The model is expressed in terms
-    of the input and of machine properties such as cache sizes, rather than
-    measured times. The answer also states how far each model reaches: whether
-    it predicts an absolute cost, only the ordering of candidate values, or only
-    the point at which a trend changes.
+    cost of the individual stages of the transform?} 
 
     \item \textbf{Can such models choose a better configuration before a
-    transform runs?} An answer uses the models to show where the defaults lie
-    relative to the balance point of each trade-off. It proposes a selection
-    procedure built only on quantities known in advance, measures it against the
-    defaults over a range of transforms, and identifies where and why it fails.
+    transform runs?} 
 \end{enumerate}
 
 \section{Contributions}
@@ -255,7 +245,7 @@ measurement results, and a selection procedure built on those models.
     density, the thread count and the cache sizes.
 \end{itemize}
 
-\paragraph{Proposed model.}
+\paragraph{Proposed model}
 \begin{itemize}
     \item \textbf{A selection procedure for the bin dimensions and the maximum
     subproblem size.} It evaluates the traffic model over combinations of maximum subproblem size and bin dimensions
