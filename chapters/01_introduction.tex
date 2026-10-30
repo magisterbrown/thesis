@@ -21,7 +21,10 @@ points and uniform frequencies. Evaluating that transform directly costs
 $O(MN)$ operations for $M$ points and $N$ frequencies. The fast Fourier
 transform would reduce the cost to $O(N \log N)$, but it applies only to
 samples that are equally spaced. The nonuniform fast Fourier transform bridges
-the two. It spreads each scattered point onto a fine uniform grid using a
+the two. It comes in three types: type~1 maps nonuniform points to uniform
+frequencies, type~2 is its adjoint and maps uniform frequencies back to
+nonuniform points, and type~3 maps nonuniform points to nonuniform
+frequencies. For type~1, it spreads each scattered point onto a fine uniform grid using a
 smooth kernel of finite width, transforms that grid with an ordinary FFT, and
 then divides out the effect of the kernel. This recovers the speed of the FFT
 at an accuracy the caller requests in advance.
@@ -56,11 +59,10 @@ Two properties make FINUFFT a suitable subject for studying how these parameters
 affect performance. It is in production use, so its behaviour affects real
 workloads rather than a benchmark written for the occasion. And it is built like
 the other implementations of the algorithm, sorting the points into bins and
-spreading them in independent subproblems. What is learned about where its time
-goes is therefore not peculiar to it.
+spreading them in independent subproblems. Insights gained from evaluating its
+performance can therefore be used to tune other NUFFT libraries.
 
-How long a transform takes is therefore not settled by the quality of those
-inner loops alone. The algorithm proceeds in stages: it sorts the nonuniform
+The algorithm proceeds in stages: it sorts the nonuniform
 points, spreads them onto the fine grid, transforms that grid, and corrects for
 the kernel. The configuration parameters decide how much work each stage is
 given. A parameter that shrinks the work in one stage usually enlarges it in
@@ -75,26 +77,30 @@ this thesis.
 
 FINUFFT chooses the values of its configuration parameters automatically, but
 mostly from fixed constants or simple rules rather than from the transform at
-hand. The user may override all of them except the bin dimensions:
+hand. The version of the library that preceded this thesis used the following
+defaults and heuristics, all of which the user could override by any value in corresponding 
+range:
 \begin{itemize}
-    \item the \emph{upsampling factor} $\sigma$ is $1.25$, or $2$ when the point
-    density or the requested accuracy is high;
-    \item the \emph{maximum subproblem size} $S_{\max}$ is $10^5$ points in two
-    and three dimensions and $10^4$ in one, or fewer if a thread has fewer points
+    \item the \emph{upsampling factor} $\sigma$, range is any real between 1.15 and 2.0, heuristics choose 
+    $1.25$, or $2$ when the point density or the requested accuracy was high;
+    \item the \emph{maximum subproblem size} $S_{\max}$, from $1$ to the number of
+    points per thread $M/n_{\mathrm{thr}}$, was $10^5$ points in two
+    and three dimensions and $10^4$ in one, or fewer if a thread had fewer points
     than that;
-    \item the \emph{bin dimensions} are $16$ grid cells along the $x$ axis and
+    \item the \emph{bin dimensions}, integer from $1$ to the fine-grid size $N_i$ along
+    each axis, were $16$ grid cells along the $x$ axis and
     $4$ along the others, a constant compiled into the library;
-    \item \emph{sorting} is decided by a heuristic, and is enabled for inputs of
+    \item \emph{sorting of nonuniform points by coordinates}, either on or off,
+    and was enabled by heuristics for inputs of
     realistic size;
-    \item the \emph{atomic-update threshold} is $10$ threads.
+    \item the \emph{atomic-update threshold}, any number of threads, was set to $10$.
 \end{itemize}
 These defaults were tuned by the authors for common combinations of transform
 and CPU. They stay the same, however, while transforms vary widely in
 dimension, point density, accuracy, thread count and the machine they run on.
 
 The right value is hard to guess because each parameter affects performance
-nonlinearly, through more than one stage of the transform. A type-1 transform
-runs in four stages. First, the points are \emph{sorted} into bins. Next, they
+nonlinearly, through more than one stage of the transform. For example a type-1 transform runs in four stages. First, the points are \emph{sorted} into bins. Next, they
 are \emph{spread} onto a fine grid: each thread gathers a subproblem of points,
 spreads them into a private subgrid and adds that subgrid to the shared grid.
 The grid is then transformed by an \emph{FFT}, and finally the result is
@@ -155,27 +161,6 @@ that predict performance from them. Finally, these models are evaluated before
 a transform runs to select configuration parameters that provide better
 performance than the library defaults.
 
-\section{Thesis Organization}
-
-The remainder of this thesis is organised as follows.
-Chapter~\ref{ch:background} introduces the nonuniform fast Fourier transform,
-the structure FINUFFT gives it, and the prior work on choosing parameters by
-measurement.
-Chapter~\ref{ch:methodology} describes the machine, the workloads and the
-instrumentation on which every later measurement rests, including how the
-stages of a subproblem are separated from one another.
-Chapter~\ref{ch:parameter_importance} establishes where a transform spends its
-time and which of the six parameters account for the variation in it, narrowing
-the field for the two chapters that follow.
-Chapter~\ref{ch:sigma_selection} takes the upsampling factor, the highest-ranked
-of them, and analyses and models the two costs it trades against each other.
-Chapter~\ref{ch:parameter_tuning} does the same for the parameters that govern
-the spreader, the maximum subproblem size and the bin dimensions, and derives
-the model of subgrid size on which their behaviour rests. It then combines
-these results into a model of memory traffic, proposes a procedure that selects
-both parameters from it, and evaluates that procedure on $54$ transforms.
-Chapter~\ref{ch:conclusion} answers the research questions, states the
-limitations of the study, and outlines future work.
 
 \section{Research Questions}
 \label{sec:research_questions}
@@ -183,25 +168,12 @@ limitations of the study, and outlines future work.
 This thesis addresses three questions.
 
 \begin{enumerate}
-    \item \textbf{Which of FINUFFT's configuration parameters affect performance
-    significantly on the machine under test?} An answer names the parameters whose
-    values change the execution time of a transform appreciably. For each, it
-    identifies the stages whose cost it reduces and the stages whose cost it
-    raises.
-
+    \item \textbf{Is there a combination of FINUFFT's configuration parameters
+    that performs significantly better than its current heuristics?}
     \item \textbf{Can models describe how changing each parameter affects the
-    cost of the individual stages of the transform?} An answer gives a model of
-    the cost of each stage a parameter acts on. The model is expressed in terms
-    of the input and of machine properties such as cache sizes, rather than
-    measured times. The answer also states how far each model reaches: whether
-    it predicts an absolute cost, only the ordering of candidate values, or only
-    the point at which a trend changes.
-
+    cost of the individual stages of the transform?} 
     \item \textbf{Can such models choose a better configuration before a
-    transform runs?} An answer uses the models to show where the defaults lie
-    relative to the balance point of each trade-off. It proposes a selection
-    procedure built only on quantities known in advance, measures it against the
-    defaults over a range of transforms, and identifies where and why it fails.
+    transform runs?} 
 \end{enumerate}
 
 \section{Contributions}
@@ -255,9 +227,31 @@ measurement results, and a selection procedure built on those models.
     density, the thread count and the cache sizes.
 \end{itemize}
 
-\paragraph{Proposed model.}
+\paragraph{New proposed model}
 \begin{itemize}
     \item \textbf{A selection procedure for the bin dimensions and the maximum
     subproblem size.} It evaluates the traffic model over combinations of maximum subproblem size and bin dimensions
     and picks one that generates least memory traffic.
 \end{itemize}
+
+\section{Thesis Organization}
+
+The remainder of this thesis is organised as follows.
+Chapter~\ref{ch:background} introduces the nonuniform fast Fourier transform,
+the structure FINUFFT gives it, and the prior work on choosing parameters by
+measurement.
+Chapter~\ref{ch:methodology} describes the machine, the workloads and the
+instrumentation on which every later measurement rests, including how the
+stages of a subproblem are separated from one another.
+Chapter~\ref{ch:parameter_importance} establishes where a transform spends its
+time and which of the six parameters account for the variation in it, narrowing
+the field for the two chapters that follow.
+Chapter~\ref{ch:sigma_selection} takes the upsampling factor, the highest-ranked
+of them, and analyses and models the two costs it trades against each other.
+Chapter~\ref{ch:parameter_tuning} does the same for the parameters that govern
+the spreader, the maximum subproblem size and the bin dimensions, and derives
+the model of subgrid size on which their behaviour rests. It then combines
+these results into a model of memory traffic, proposes a procedure that selects
+both parameters from it, and evaluates that procedure on $54$ transforms.
+Chapter~\ref{ch:conclusion} answers the research questions, states the
+limitations of the study, and outlines future work.

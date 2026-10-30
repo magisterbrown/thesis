@@ -52,8 +52,13 @@ The results have practical implications for FINUFFT and libraries like it. The b
 \section{Answers to the Research Questions}
 \label{sec:rq_answers}
 
-\paragraph{RQ1: Which of FINUFFT's configuration parameters affect performance
-significantly on the machine under test?}
+\paragraph{RQ1: Is there a combination of FINUFFT's configuration parameters
+that performs significantly better than its current heuristics?}
+Yes. On the reference transform the joint search found a configuration that
+completed the transform $23.3\%$ faster than the library defaults, a speedup of
+$1.30$, and a second search with OpenTuner found one $19.1\%$ faster. Both kept
+$\sigma$ and sorting at their defaults and gained from a smaller maximum
+subproblem size, larger bins and atomic updates (Chapter~\ref{ch:parameter_importance}).
 Six of the options the library carries reach the stages in which the time is spent, and all six change the execution time of a transform: whether the nonuniform points are sorted (\texttt{spread\_sort}), the upsampling factor (\texttt{upsampfac}), the maximum number of points in a spreading subproblem (\texttt{spread\_max\_sp\_size}), the thread count above which the adding stage switches from a critical section to atomic updates (\texttt{spread\_nthr\_atomic}), and the dimensions of the boxes into which the points are sorted ($b_x$, $b_y$, $b_z$), which the released library fixes at compile time. Chapter~\ref{ch:parameter_importance} gives the share of the variation that each accounts for.
 
 Four of the six speed up one stage and slow another, so each has an interior optimum; sorting and the atomic-update threshold select between alternatives instead. The upsampling factor trades spreading against the FFT: raising $\sigma$ narrows the kernel, making spreading cheaper, and enlarges the fine grid the FFT must transform (Chapter~\ref{ch:sigma_selection}). The maximum subproblem size trades gathering against adding: adding falls as subproblems grow, because the padding of every subgrid is paid once per subproblem, while gathering rises once the per-thread staging buffer no longer fits in that thread's share of L3. The bin dimensions act on three stages: the sort through the size of its per-thread counter array against that thread's share of L3, spreading through the padded region a bin covers against L1 and L2, and adding through the size of the subgrids the resulting point order produces (Chapter~\ref{ch:parameter_tuning}).
