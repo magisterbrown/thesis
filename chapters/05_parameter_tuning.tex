@@ -188,27 +188,37 @@ The first factor is the size of the subgrids. Every subgrid must be zeroed befor
 
 The second factor works in the opposite direction. Before spreading a subproblem, each thread copies the coordinates and strengths of its points into a staging buffer of size $(d+2)\,\texttt{sizeof(FLT)}\,S_{\max}$ bytes, a $d$ for each coordinate dimension and two complex strength of each point, so its size grows linearly with $S_{\max}$. While the buffer fits in the thread's share of the L3 cache, the lines written for one subproblem stay in cache untill the next one overwrites them. Once it no longer fits, buffer lines get evicted when gathering and must be fetched from a memory when a kernel processes them, so the gather step takes more cache misses and stalls. The same increase in $S_{\max}$ that makes the subgrid smaller per point therefore makes the gather miss more, and very large subgrids eventually leave the L3 cache as well. $S_{\max}$ trades memory traffic in the add step against memory traffic in the gather step.
 
-The two effects can be put on one scale by estimating the number of DRAM lines (64 bytes) the spreading stage reads and writes per nonuniform point. Each subproblem holds about $S_{\max}$ points. Write $A_d(S_{\max})$ for its mean subgrid size, and $\ell = 64 / (2 \cdot \texttt{sizeof(FLT)})$ is a number of complex cells in a cache line. Then
+The two effects can be put on one scale by estimating the number of DRAM lines (64 bytes) the spreading stage reads and writes per nonuniform point. Each subproblem holds about $S_{\max}$ points and write $A_d(S_{\max})$ for its mean subgrid size. Then
 \begin{equation}
-    \lambda = \frac{A_d(S_{\max})}{S_{\max}\,\ell}, \qquad
+    \lambda = \frac{A_d(S_{\max})}{S_{\max}} * \frac{2\,\texttt{sizeof(FLT)}}{64}, \qquad
     \beta = \frac{(d+2)\,\texttt{sizeof(FLT)}}{64}, \qquad
-    u = \frac{1 - e^{-\rho\, w^{d-1} (w + \ell - 1)}}{\rho\, \ell}
+      u = \frac{w^d}{1+\rho\,w^d} \cdot \frac{2\,\texttt{sizeof(FLT)}}{64}
     \label{eq:traffic_terms}
 \end{equation}
-are the total subgrid lines, the staging-buffer lines and the subgrid lines touched by the kernel, each per point; $u$ counts the lines covered by the $w^{d-1} \times (w + \ell - 1)$ footprint of a point's kernel, shared between points that fall close together. Whether the subgrid and the buffer stay in cache is modeled by log-linear interpolation between the size at which each starts to spill and the size at which it no longer fits at all,
+where $\lambda$ is number of cache lines the subgrid per point, $\beta$ cache lines that store mode and coordintaes and $u$ is the unique subgrid lines touched by the spreading kernel. Whether the subgrid and the buffer stay in cache is modeled by log-linear interpolation between the size at which each starts to spill and the size at which it no longer fits at all,
 \begin{equation}
     h_{\mathrm{sub}} = \mathrm{ramp}\Bigl(2\,\texttt{sizeof(FLT)}\, A_d(S_{\max});\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr), \qquad
-    h_{\mathrm{buf}} = \mathrm{ramp}\Bigl(\beta \cdot 64\, S_{\max};\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr),
+    h_{\mathrm{buf}} = \mathrm{ramp}\Bigl( (𝑑 + 2) sizeof(FLT)\, S_{\max};\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr),
     \label{eq:traffic_ramps}
 \end{equation}
-where $\mathrm{ramp}(x; a, c) = \min\bigl(1, \max(0, \ln(x/a) / \ln(c/a))\bigr)$, $C_2$ is the L2 cache of one core and $C_3$ the L3 cache divided by the number of threads (Table~\ref{tab:platform}). With $\gamma = 0.94$ for the fraction of fine-grid lines that the add step has to fetch from memory, fitted to the measurements, the estimate is
-\begin{align}
-    \mathrm{reads}  &= (d + 1) + 2\beta\, h_{\mathrm{buf}} + (2\lambda + u)\, h_{\mathrm{sub}} + \gamma \lambda, \label{eq:spread_reads}\\
-    \mathrm{writes} &= \beta\, h_{\mathrm{buf}} + (2\lambda + u)\, h_{\mathrm{sub}} + \gamma \lambda. \label{eq:spread_writes}
-\end{align}
-The term $d + 1$ is the coordinates and the strength of each point, read once at random; the $\beta$ terms are the staging buffer, fetched before it is written, re-read by the kernel and written back once it no longer fits; the $\lambda$ and $u$ terms are the subgrid, fetched by the zeroing, touched again by the kernel and read back by the add step once it no longer fits; and $\gamma \lambda$ is the fine grid, read and written by the add step. $S_{\max}$ moves the terms in opposite directions: raising it lowers $\lambda$ but raises $h_{\mathrm{buf}}$ and $h_{\mathrm{sub}}$, which is the trade-off described above. Against the line counts of the processor's memory controllers, the estimate of reads plus writes has a median error of $7\%$ over $360$ measured configurations of dimension, precision, density, bin size and $S_{\max}$, listed in Appendix~\ref{app:traffic}; it underestimates the writes alone by about a quarter, so it ranks configurations better than it predicts their absolute traffic.
+where $\mathrm{ramp}(x; a, c) = \min\bigl(1, \max(0, \ln(x/a) / \ln(c/a))\bigr)$, $C_3$ the L3 cache fraction of the thread.
+Spreading makes these reads writes when processing subproblem:
+\begin{enumerate}
+    \item \emph{Gather.} The $d + 1$ coordinates and the strength of each point are read from the input arrays and written into the staging buffer. Once the buffer no longer fits in cache, each of its lines is fetched before it is written ($\beta\, h_{\mathrm{buf}}$ reads) and written back to memory afterwards ($\beta\, h_{\mathrm{buf}}$ writes).
+    \item \emph{Zeroing.} The subgrid is cleared before spreading. Once it no longer fits in cache, each of its lines is fetched before it is cleared ($\lambda\, h_{\mathrm{sub}}$ reads) and the cleared lines are written back ($\lambda\, h_{\mathrm{sub}}$ writes).
+    \item \emph{Spreading kernel.} The kernel reads the buffer with points back, fetching it again once it has been evicted creating $\beta\, h_{\mathrm{buf}}$ reads, and updates the subgrid lines covered by the kernels of the points, fetching and writing back the $u$ unique lines ($u\, h_{\mathrm{sub}}$ reads and writes).
+    \item \emph{Adding.} The finished subgrid is read back ($\lambda\, h_{\mathrm{sub}}$ reads) and written back once more ($\lambda\, h_{\mathrm{sub}}$ writes), and the matching part of the fine grid is read and written ($\lambda$ reads and $\lambda$ writes).
+\end{enumerate}
 
-Figure~\ref{fig:maxsp_traffic_model} compares the estimate of reads plus writes with the line counts of the memory controllers for the reference transform on $20$ threads, one per core, sweeping $S_{\max}$ with every other setting at its default. The ends of the two ramps in Equation~\eqref{eq:traffic_ramps} were fitted to this sweep together with the $54$ configurations of dimension, precision and density used elsewhere in this chapter: the subgrid and the buffer leave the cache over a narrow range around a thread's share of L3, between half and twice that share for both the subgrid and the buffer. On the $54$ configurations the median error of the estimate is $7\%$. On the reference transform it agrees with the measurements from $S_{\max} \approx 30{,}000$ upwards, to within $7\%$ except at the largest subproblem size, one per thread, where it is $11\%$ low. Below that it is too high, by $13$ to $74\%$, and the error grows as $S_{\max}$ shrinks: small subproblems are processed in sorted order, so consecutive subproblems add into neighbouring parts of the fine grid while those lines are still cached, a reuse the constant $\gamma$ does not capture. The estimate therefore reproduces the traffic of large subproblems and the step at which the staging buffer leaves the thread's share of the L3 cache, but overestimates the traffic of small subproblems.
+Total number of reads and writes is:
+\begin{align}
+    \mathrm{reads}  &= (d + 1) + 2\beta\, h_{\mathrm{buf}} + (2\lambda + u)\, h_{\mathrm{sub}} + \lambda, \label{eq:spread_reads}\\
+    \mathrm{writes} &= \beta\, h_{\mathrm{buf}} + (2\lambda + u)\, h_{\mathrm{sub}} + \lambda. \label{eq:spread_writes}
+\end{align}
+
+$S_{\max}$ moves the terms in opposite directions: raising it lowers $\lambda$ but raises $h_{\mathrm{buf}}$ and $h_{\mathrm{sub}}$, which is the trade-off described above. Against the line counts of the processor's memory controllers, the estimate of reads plus writes has a median error of $7\%$ over $360$ measured configurations of dimension, precision, density, bin size and $S_{\max}$, listed in Appendix~\ref{app:traffic}.
+
+Figure~\ref{fig:maxsp_traffic_model} compares the estimate of reads plus writes with the measured spreading time for the reference transform on $1$, $10$ and $20$ threads. On a single thread the best performance is at $S_{\max} \approx 10^5$ and the curve is convex, while on $20$ threads it becomes flat and the best performing values lie on the sides.
 
 \begin{figure}[ht]
     \centering
@@ -218,7 +228,7 @@ Figure~\ref{fig:maxsp_traffic_model} compares the estimate of reads plus writes 
 \end{figure}
 
 \subsection{The current heuristic}
-The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{thr}}$ in two and three dimensions, and to the minimum of $10^4$ and $M/n_{\text{thr}}$ in one. These constants are suboptimal, because a fixed number of points need not land on the balance point that minimises memory demand. Figure~\ref{fig:maxsp_traffic_model} shows how far the default sits from that point on the reference transform: at $S_{\max} = 10^5$ the spreading stage moves $8.2$ lines per nonuniform point between the processor and memory, against $6.4$ at $S_{\max} = 8000$, where the stage is fastest, taking $546$\,ms against $572$\,ms at the default.
+The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{thr}}$ in two and three dimensions, and to the minimum of $10^4$ and $M/n_{\text{thr}}$ in one. These constants are suboptimal, because a fixed number of points need not land on the balance point that minimises memory demand. 
 
 
 %\subsection{Effect on gathering.}
