@@ -188,17 +188,17 @@ The first factor is the size of the subgrids. Every subgrid must be zeroed befor
 
 The second factor works in the opposite direction. Before spreading a subproblem, each thread copies the coordinates and strengths of its points into a staging buffer of size $(d+2)\,\texttt{sizeof(FLT)}\,S_{\max}$ bytes, a $d$ for each coordinate dimension and two complex strength of each point, so its size grows linearly with $S_{\max}$. While the buffer fits in the thread's share of the L3 cache, the lines written for one subproblem stay in cache untill the next one overwrites them. Once it no longer fits, buffer lines get evicted when gathering and must be fetched from a memory when a kernel processes them, so the gather step takes more cache misses and stalls. The same increase in $S_{\max}$ that makes the subgrid smaller per point therefore makes the gather miss more, and very large subgrids eventually leave the L3 cache as well. $S_{\max}$ trades memory traffic in the add step against memory traffic in the gather step.
 
-The two effects can be put on one scale by estimating the number of DRAM lines (64 bytes) the spreading stage reads and writes per nonuniform point. Write $s = M / \max(n_{\mathrm{thr}}, \lceil M / S_{\max} \rceil)$ for the number of points in a subproblem, $A_d(s)$ for its mean subgrid size from Equations~\eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and~\eqref{eq:subgrid_3d}, and $\ell = 64 / (2 \cdot \texttt{sizeof(FLT)})$ for the number of complex cells in a line. Then
+The two effects can be put on one scale by estimating the number of DRAM lines (64 bytes) the spreading stage reads and writes per nonuniform point. Each subproblem holds about $S_{\max}$ points. Write $A_d(S_{\max})$ for its mean subgrid size, and $\ell = 64 / (2 \cdot \texttt{sizeof(FLT)})$ is a number of complex cells in a cache line. Then
 \begin{equation}
-    \lambda = \frac{A_d(s)}{s\,\ell}, \qquad
+    \lambda = \frac{A_d(S_{\max})}{S_{\max}\,\ell}, \qquad
     \beta = \frac{(d+2)\,\texttt{sizeof(FLT)}}{64}, \qquad
     u = \frac{1 - e^{-\rho\, w^{d-1} (w + \ell - 1)}}{\rho\, \ell}
     \label{eq:traffic_terms}
 \end{equation}
 are the total subgrid lines, the staging-buffer lines and the subgrid lines touched by the kernel, each per point; $u$ counts the lines covered by the $w^{d-1} \times (w + \ell - 1)$ footprint of a point's kernel, shared between points that fall close together. Whether the subgrid and the buffer stay in cache is modeled by log-linear interpolation between the size at which each starts to spill and the size at which it no longer fits at all,
 \begin{equation}
-    h_{\mathrm{sub}} = \mathrm{ramp}\Bigl(2\,\texttt{sizeof(FLT)}\, A_d(s);\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr), \qquad
-    h_{\mathrm{buf}} = \mathrm{ramp}\Bigl(\beta \cdot 64\, s;\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr),
+    h_{\mathrm{sub}} = \mathrm{ramp}\Bigl(2\,\texttt{sizeof(FLT)}\, A_d(S_{\max});\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr), \qquad
+    h_{\mathrm{buf}} = \mathrm{ramp}\Bigl(\beta \cdot 64\, S_{\max};\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr),
     \label{eq:traffic_ramps}
 \end{equation}
 where $\mathrm{ramp}(x; a, c) = \min\bigl(1, \max(0, \ln(x/a) / \ln(c/a))\bigr)$, $C_2$ is the L2 cache of one core and $C_3$ the L3 cache divided by the number of threads (Table~\ref{tab:platform}). With $\gamma = 0.94$ for the fraction of fine-grid lines that the add step has to fetch from memory, fitted to the measurements, the estimate is
