@@ -23,12 +23,28 @@ $b_x$, $b_y$, $b_z$ & cells  & sort bin dimensions along each axis \\
 \multicolumn{3}{@{}l}{\emph{Derived quantities}} \\
 $w$             & cells      & kernel width, derived from $\varepsilon$ and $\sigma$ \\
 $\varphi$, $\hat{\varphi}$ & --- & spreading kernel and its Fourier transform \\
-$n_{\mathrm{sub}}$ & ---     & subproblems the transform is divided into, $\lceil M / S_{\max} \rceil$ \\
-$n_{\mathrm{bins}}$ & ---    & sort bins covering the fine grid \\
-$n_b$           & ---        & bins a subproblem's points occupy \\
-$x_{\mathrm{ext}}$ & cells   & extent of a subgrid along the fastest axis \\
-$A(S_{\max})$   & cells      & average subgrid size produced by a subproblem \\
-$B(S_{\max})$   & bytes      & staging buffer a thread fills, $S_{\max}\,\texttt{sizeof(FLT)}\,(d+2)$ \\
 $W_{\mathrm{simd}}$ & cells  & SIMD vector width in grid points \\
+$\texttt{PREC}$  & ---        & floating-point type of the transform, \texttt{float} or \texttt{double} \\
+$n_{\mathrm{tr}}$ & ---      & strength vectors transformed in one call \\
+\addlinespace
+\multicolumn{3}{@{}l}{\emph{Subgrid model}} \\
+$n_b$           & bins       & bins a subproblem's points occupy \\
+$b$             & cells      & bin size in one dimension \\
+$N_x$, $N_y$    & cells      & fine-grid size along $x$ and $y$ \\
+$x_{\mathrm{ext}}$ & cells   & extent of a subgrid along the fastest axis within one bin row \\
+$r$, $f$        & ---        & fraction of a bin row a subproblem covers, and probability it crosses a row \\
+$q$, $g$        & ---        & fraction of a bin slab a subproblem covers, and probability it crosses a slab \\
+$L_1$, $A_2$, $A_3$, $A_d$ & cells & average subgrid size in one, two, three and $d$ dimensions \\
+\addlinespace
+\multicolumn{3}{@{}l}{\emph{Memory traffic model}} \\
+$\lambda$       & lines/point & subgrid cache lines per point \\
+$\beta$         & lines/point & staging-buffer cache lines per point \\
+$u$             & lines/point & unique subgrid lines touched by the spreading kernel per point \\
+$C_3$           & bytes      & a thread's share of the L3 cache \\
+$h_{\mathrm{sub}}$, $h_{\mathrm{buf}}$ & --- & fraction of the subgrid and of the staging buffer that does not fit in cache \\
+$\mathrm{ramp}(x; a, c)$ & --- & log-linear interpolation from $0$ at $x = a$ to $1$ at $x = c$ \\
+$n_{\mathrm{bins}}$ & bins   & sort bins covering the fine grid \\
+$n_t$           & threads    & threads used by the bin sort \\
+$P_{\mathrm{count}}$, $P_{\mathrm{place}}$ & --- & probability that a counter access misses in the counting and the placement pass \\
 \bottomrule
 \end{tabularx}

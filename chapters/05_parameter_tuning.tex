@@ -186,19 +186,19 @@ During the spreading stage, nonuniform points are partitioned into spatially loc
 
 The first factor is the size of the subgrids. Every subgrid must be zeroed before spreading and added to the fine grid afterwards, so each of its cells costs memory traffic. Section~\ref{sec:subgrid_size} showed that a subgrid is larger than the region its points occupy. This overhead can be measured as the number of subgrid cells per point: the average subgrid size $A_d$ from Equations~\eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and~\eqref{eq:subgrid_3d}, divided by the number of points in the subproblem, $A_d/S_{\max}$. Every extra cell therefore adds overhead to each point.
 
-The second factor works in the opposite direction. Before spreading a subproblem, each thread copies the coordinates and strengths of its points into a staging buffer of size $(d+2)\,\texttt{sizeof(FLT)}\,S_{\max}$ bytes, $d$ words for the coordinates, where $d$ is the number of dimensions, and two for the complex strength of each point, so its size grows linearly with $S_{\max}$. While the buffer fits in the thread's share of the L3 cache, the lines written for one subproblem stay in cache until the next one overwrites them. Once it no longer fits, buffer lines are evicted during gathering and must be fetched from memory when the kernel processes them, so the gather step suffers more cache misses and stalls. The same increase in $S_{\max}$ that makes the subgrid smaller per point therefore makes the gather miss more, and very large subgrids eventually leave the L3 cache as well. $S_{\max}$ trades memory traffic in the add step against memory traffic in the gather step.
+The second factor works in the opposite direction. Before spreading a subproblem, each thread copies the coordinates and strengths of its points into a staging buffer of size $(d+2)\,\texttt{sizeof(PREC)}\,S_{\max}$ bytes, $d$ words for the coordinates, where $d$ is the number of dimensions, and two for the complex strength of each point, so its size grows linearly with $S_{\max}$. While the buffer fits in the thread's share of the L3 cache, the lines written for one subproblem stay in cache until the next one overwrites them. Once it no longer fits, buffer lines are evicted during gathering and must be fetched from memory when the kernel processes them, so the gather step suffers more cache misses and stalls. The same increase in $S_{\max}$ that makes the subgrid smaller per point therefore makes the gather miss more, and very large subgrids eventually leave the L3 cache as well. $S_{\max}$ trades memory traffic in the add step against memory traffic in the gather step.
 
 The two effects can be put on one scale by estimating the number of DRAM lines (64 bytes) the spreading stage reads and writes per nonuniform point. Each subproblem holds about $S_{\max}$ points; write $A_d(S_{\max})$ for its mean subgrid size. Then
 \begin{equation}
-    \lambda = \frac{A_d(S_{\max})}{S_{\max}} \cdot \frac{2\,\texttt{sizeof(FLT)}}{64}, \qquad
-    \beta = \frac{(d+2)\,\texttt{sizeof(FLT)}}{64}, \qquad
-      u = \frac{w^d}{1+\rho\,w^d} \cdot \frac{2\,\texttt{sizeof(FLT)}}{64}
+    \lambda = \frac{A_d(S_{\max})}{S_{\max}} \cdot \frac{2\,\texttt{sizeof(PREC)}}{64}, \qquad
+    \beta = \frac{(d+2)\,\texttt{sizeof(PREC)}}{64}, \qquad
+      u = \frac{w^d}{1+\rho\,w^d} \cdot \frac{2\,\texttt{sizeof(PREC)}}{64}
     \label{eq:traffic_terms}
 \end{equation}
 where $\lambda$ is the number of subgrid cache lines per point, $\beta$ the number of cache lines that store the coordinates and the strength of a point, and $u$ the number of unique subgrid lines touched by the spreading kernel per point. Whether the subgrid and the buffer stay in cache is modeled by log-linear interpolation between the size at which each starts to spill and the size at which it no longer fits at all,
 \begin{equation}
-    h_{\mathrm{sub}} = \mathrm{ramp}\Bigl(2\,\texttt{sizeof(FLT)}\, A_d(S_{\max});\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr), \qquad
-    h_{\mathrm{buf}} = \mathrm{ramp}\Bigl((d + 2)\,\texttt{sizeof(FLT)}\, S_{\max};\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr),
+    h_{\mathrm{sub}} = \mathrm{ramp}\Bigl(2\,\texttt{sizeof(PREC)}\, A_d(S_{\max});\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr), \qquad
+    h_{\mathrm{buf}} = \mathrm{ramp}\Bigl((d + 2)\,\texttt{sizeof(PREC)}\, S_{\max};\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr),
     \label{eq:traffic_ramps}
 \end{equation}
 where $\mathrm{ramp}(x; a, c) = \min\bigl(1, \max(0, \ln(x/a) / \ln(c/a))\bigr)$, and $C_3$ is the thread's share of the L3 cache.
@@ -235,7 +235,7 @@ The current heuristic sets $S_{\max}$ to the minimum of $10^5$ and $M/n_{\text{t
 %Each thread allocates a buffers for holding a
 %set of point coordinates and strengths for the current subproblem. Their combined size is
 %\begin{equation}
-%  B(S_{\max}) \;=\; S_{\max}\,\cdot\,\texttt{sizeof(FLT)}\,\cdot\,(d+2),
+%  B(S_{\max}) \;=\; S_{\max}\,\cdot\,\texttt{sizeof(PREC)}\,\cdot\,(d+2),
 %  \label{eq:staging_buffer}
 %\end{equation}
 %with $d$ words per point for the coordinates and two for the complex strength. While $B(S_{\max})$ fits in a thread's share of cache, the lines written by one subproblem are still owned when the next one overwrites them, and the stores cost nothing beyond the cache hit. Once $B(S_{\max})$ exceeds that share, every written line, with the points it holds, must first be fetched from a lower level of the hierarchy and later written back, and the thread stalls while it waits.
@@ -411,7 +411,7 @@ Two further limits restrict which bins are worth considering. The first is their
 The second limit is the cache. Points keep an arbitrary order inside a bin, so while the points of one bin are spread, the kernel's writes scatter over the whole region the bin covers, padded by the kernel width on every side so that a point at the edge can deposit its full $w^d$ neighbourhood. That region,
 
 \begin{equation}
-    (b_x + w)(b_y + w)(b_z + w) \cdot 2\,\texttt{sizeof(FLT)} \ \text{bytes},
+    (b_x + w)(b_y + w)(b_z + w) \cdot 2\,\texttt{sizeof(PREC)} \ \text{bytes},
     \label{eq:padded_bin}
 \end{equation}
 is written repeatedly as the bin is consumed, and Table~\ref{tab:spread_l2} shows what happens once it leaves the L1 data cache. Up to $64 \times 16$, where the padded bin fills $0.8$ of L1d, spreading costs between $3.7$ and $4.05$ Gcycles regardless of the bin; at $96 \times 24$ and $128 \times 32$, past L1d but inside L2, it rises to $4.25$ and $4.5$ Gcycles as the misses are served by L2; and once the padded bin no longer fits in L2 either, from $192 \times 48$ onwards, it climbs to $5.8$, $8.2$ and finally $55.6$ Gcycles. A bin is therefore only allowed to grow while the padded region of Equation~\eqref{eq:padded_bin} stays within $0.9$ of L1d, which leaves room for the kernel values and the staging buffer the stage also keeps in L1. 
