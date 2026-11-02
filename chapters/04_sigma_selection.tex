@@ -126,6 +126,8 @@ at the same $\sigma$ the model does and holds flat between those steps, so it
 can be used to locate the $\sigma$ that minimises spreading cost without
 profiling. The FFT model is not accurate in the same sense. The
 $\mathcal{O}(\tilde{N} \log \tilde{N})$ expression is an asymptotic guide whose
-constant is set by the memory hierarchy: small transforms are dominated by
-per-call overhead, and multi-threaded transforms track cache residency rather
-than butterfly count until the grid spills out of L3.
+predictions diverge from the measurements in two cases. Small transforms are
+dominated by per-call overhead and fall behind the model. The throughput of
+multithreaded transforms grows linearly with the transform size while the data
+fits in cache; beyond that, it is limited to about three times the
+single-threaded throughput, on all $40$ threads.
