@@ -14,8 +14,8 @@ The standard Discrete Fourier Transform (DFT) operates on uniformly sampled data
 
 Three types of NUFFT are commonly distinguished, according to which side of the transform is nonuniform. Write $M$ for the number of nonuniform points and $N$ for the number of uniform modes.
 \begin{itemize}
-    \item \textbf{Type 1 (nonuniform to uniform):} given strengths $c_j$ at nonuniform locations $x_j$, evaluate the Fourier coefficients $f_k = \sum_{j=1}^{M} c_j e^{\pm i k \cdot x_j}$ on a uniform grid of modes $k$.
-    \item \textbf{Type 2 (uniform to nonuniform):} the adjoint operation. Given coefficients $f_k$ on a uniform grid of modes, evaluate the Fourier series $c_j = \sum_k f_k e^{\pm i k \cdot x_j}$ at nonuniform target locations $x_j$.
+    \item \textbf{Type 1 (nonuniform to uniform):} given strengths $c_j$ at nonuniform locations $x_j$, evaluate the Fourier coefficients $f_k = \sum_{j=1}^{M} c_j e^{\pm i k \cdot x_j}$ on a uniform grid of modes $k$;
+    \item \textbf{Type 2 (uniform to nonuniform):} the adjoint operation. Given coefficients $f_k$ on a uniform grid of modes, evaluate the Fourier series $c_j = \sum_k f_k e^{\pm i k \cdot x_j}$ at nonuniform target locations $x_j$;
     \item \textbf{Type 3 (nonuniform to nonuniform):} given strengths at nonuniform locations $x_j$, evaluate at nonuniform target frequencies $s_k$, with neither side lying on a grid.
 \end{itemize}
 
@@ -80,7 +80,14 @@ Whether a step is limited by computation or by data movement is described by the
 \end{equation}
 where $P_{\text{peak}}$ is the peak floating-point rate of the processor and $B$ the bandwidth of the memory the data comes from. At low intensity a kernel is memory-bound and its speed is set by bandwidth. At high intensity it is compute-bound. Each level of the cache hierarchy has its own bandwidth, so a kernel whose working set spills from one level to the next becomes slower without its arithmetic changing. The stages studied in this thesis sit on different sides of this bound. The adding step does little arithmetic per cell written, so it is memory-bound. Spreading evaluates the kernel $w^d$ times per point, so it is compute-bound as long as the region it writes stays in cache.
 
-\subsection{Research gap}
+\subsection{Limitations of existing work}
 \label{sec:related_gap}
 
-Existing work therefore either finds a fast configuration by measurement or relies on fixed defaults. Search-based tuners such as FFTW and gNUFFTW adapt to the hardware, but they do not explain their choice, so the search must be repeated for every new input and machine. Libraries such as NFFT3 and FINUFFT apply the same defaults everywhere. The analysis of Beatty et al.\ and Barnett establishes which configurations are valid, but not which of them is fastest. The structural parameters of the spreader have been left out of the search altogether. What is missing is an explanation of how the cost of each stage depends on each parameter and on the machine. No study to date has modelled how the parameters of a CPU NUFFT shift cost between its stages, or used such models to choose parameter values before a transform runs. This thesis addresses that gap for FINUFFT.
+Existing work either finds a fast configuration by measurement or relies on fixed defaults, and both approaches leave the same questions open. Search-based tuners such as FFTW and gNUFFTW adapt to the hardware, but they do not explain their choice, so the search must be repeated for every new input and machine. Its cost is repaid only when a plan is reused many times, which is not how a library call is typically made. Libraries such as NFFT3 and FINUFFT apply the same defaults everywhere, although the transforms they perform and the machines they run on vary widely.
+
+The limitations differ between the parameters. For the upsampling factor, the analysis of Beatty et al.\ and Barnett establishes which configurations are valid, but not which of them is fastest. FINUFFT's rule checks only accuracy and chooses between two values, without weighing the cost of the FFT against that of spreading. Spreading parameter vairations are even less explored: they have been left out of earlier searches. gNUFFTW keeps the sector width of gpuNUFFT fixed, and the released FINUFFT fixes its bin dimensions at compile time. On the GPU, gpuNUFFT and cuFINUFFT at least bound their bins by shared memory, a hard limit that leaves little to choose. On the CPU the same parameters are bounded only by the cache, where a poor choice is slower rather than impossible, and no rule relates them to the cache sizes.
+
+Influences of each parameter on each stage of the transform needs to be analyzed. For every stage, the bottleneck has to be identified, whether it is limited by computation or by memory traffic, and the relation between the properties of the machine, the transform and the parameters has to be determined. No study to date  used such an analysis to choose parameter values before a transform runs. 
+
+
+
