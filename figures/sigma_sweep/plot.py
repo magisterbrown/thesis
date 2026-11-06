@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """Plot the sigma sweep: measured cpu time against the modelled spreading cost.
 
-Data: sigma_sweep_1thread.csv, produced by perftest/sigma_sweep_bench.py on one
-exclusive Ice Lake node, SINGLE-THREADED, 8 iterations per point. Six
-configurations (1D 16000, 2D 400x400 and 3D 96x96x64, single and double, plus a
-repeat of the 2D single case) x that precision's tolerances x 16 upsampling
-factors from 1.25 to 2.00. Tolerance 1e-12 is left out of the figures: only two of the six configurations
-reached it before the sweep was stopped, so its row would be mostly empty.
+Data: sigma_sweep_xeon_1thread.csv, produced by perftest/sigma_sweep on the Xeon
+E5-2698 v4 of Section 3.1 (built there with -march=native, AVX2), SINGLE-THREADED
+(--nthreads 1, OMP_NUM_THREADS=1, pinned to one core), 8 iterations per point,
+re-run 2026-11-06. Five configurations (1D 16000 and 2D 400x400 in single and
+double, 3D 96x96x64 in double) x that precision's tolerances x 16 upsampling
+factors from 1.25 to 2.00. json_to_csv.py converts the benchmark's JSON output.
+Tolerance 1e-12 is left out of the figures: the 3D configuration was not run at
+it, and the appendix grid keeps four tolerances per row.
 
-Single-threaded on purpose. The two 2D single-precision configurations differ
-only by a label and so measure the same thing twice; across all 64 of their
-shared points they disagree by a median of 0.8%, which is the noise floor these
-curves should be read against. The same pair in a multithreaded run of the same
-benchmark disagreed by several times that, enough to swamp the sigma dependence
-in 1D entirely.
+The earlier sweep, sigma_sweep_1thread.csv, was taken on an Ice Lake node and,
+despite its name, ran the 3D and one 2D configuration on all threads; it is
+kept for reference only.
 
 The `complexity` column is finufft's own modelled spreading cost,
 nj * (2*nspread + padding) * (2*nspread)^(dim-1), taken from the benchmark's
@@ -41,13 +40,13 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 HERE = pathlib.Path(__file__).parent
-CSV = HERE / "sigma_sweep_1thread.csv"
+CSV = HERE / "sigma_sweep_xeon_1thread.csv"
 
 PREC_NAME = {"f": "single", "d": "double"}
 TIME_COLOR, CPLX_COLOR = "#1f77b4", "#ff7f0e"
 
 MAIN_TOL = 1e-6      # the tolerance the main-text figure shows
-DROP_TOLS = {1e-12}  # excluded: only 2 of the 6 configurations reached it
+DROP_TOLS = {1e-12}  # excluded: not run for 3D; keeps four tolerances per row
 MAIN_PREC = "d"      # ... and at which precision
 
 

@@ -23,14 +23,14 @@ thats why model used log linear interpolation between of data relative to cache 
 of misses.
 
 The combinations of bin dimensions and maximum subproblem size chosen by this
-procedure made the sort and spreading stages $1.29$ times faster on geometric
-average over all test transforms and thread counts. The largest gain, $1.50$
+procedure made the sort and spreading stages $1.27$ times faster on geometric
+average over all test transforms and thread counts. The largest gain, $1.45$
 times, was on $20$ threaded transforms with largest memory bandwidth demands. The
 gains from the two parameters were also measured separately. Selecting $S_{\max}$
 alone, with the bins left at their default, reduced the CPU time by only $4\%$,
 so most of the gain came from the bin dimensions. In three dimensions, where no
 bin larger than the default fits in the L1 data cache, the bins kept their
-default size, and the whole gain of $6\%$ came from $S_{\max}$.
+default size, and the whole gain of $5\%$ came from $S_{\max}$.
 
 \section{Answers to the Research Questions}
 \label{sec:rq_answers}
@@ -75,7 +75,7 @@ Yes, combinations of bin dimensions and maximum subproblem size can be ranked
 before the transform starts. The model estimates the total number of memory
 requests caused by writing back results and by spills out of cache during the
 sort and the spreading stage, and keeps the combination that minimises them.
-This approach accelerated the sort and the spreading stage by $29\%$ on
+This approach accelerated the sort and the spreading stage by $27\%$ on
 geometric average.
 
 \section{Discussion}
@@ -116,8 +116,9 @@ of the parameters is specific to that workload.
 The selection procedure also has limitations of its own. Its traffic estimate
 assumes uniformly distributed points, which causes some slowdowns when the
 points are clustered, as with the exponential distribution. The growth of cache
-misses was estimated by log-linear interpolation between half and twice a
-thread's share of the cache. This estimate gave good results on this processor,
+misses was estimated by log-linear interpolation: for the subgrids between half
+and twice a thread's share of the L3 cache, and for the staging buffer between
+the size of L2 and twice that share. This estimate gave good results on this processor,
 but its ends may need to be adjusted on other machines.
 
 \section{Future Work}
