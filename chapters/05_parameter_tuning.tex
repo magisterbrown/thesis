@@ -186,7 +186,7 @@ During the spreading stage, nonuniform points are partitioned into spatially loc
 
 The first factor is the size of the subgrids. Every subgrid must be zeroed before spreading and added to the fine grid afterwards, so each of its cells costs memory traffic. Section~\ref{sec:subgrid_size} showed that a subgrid is larger than the region its points occupy. This overhead can be measured as the number of subgrid cells per point: the average subgrid size $A_d$ from Equations~\eqref{eq:subgrid_1d}, \eqref{eq:subgrid_2d} and~\eqref{eq:subgrid_3d}, divided by the number of points in the subproblem, $A_d/S_{\max}$. Every extra cell therefore adds overhead to each point.
 
-The second factor works in the opposite direction. Before spreading a subproblem, each thread copies the coordinates and strengths of its points into a staging buffer of size $(d+2)\,\texttt{sizeof(PREC)}\,S_{\max}$ bytes, $d$ words for the coordinates, where $d$ is the number of dimensions, and two for the complex strength of each point, so its size grows linearly with $S_{\max}$. While the buffer fits in the thread's share of the L3 cache, the lines written for one subproblem stay in cache until the next one overwrites them. Once it no longer fits, buffer lines are evicted during gathering and must be fetched from memory when the kernel processes them, so the gather step suffers more cache misses and stalls. The same increase in $S_{\max}$ that makes the subgrid smaller per point therefore makes the gather miss more, and very large subgrids eventually leave the L3 cache as well. $S_{\max}$ trades memory traffic in the add step against memory traffic in the gather step.
+The second factor works in the opposite direction. Before spreading a subproblem, each thread copies the coordinates and strengths of its points into a staging buffer of size $(d+2)\,\texttt{sizeof(PREC)}\,S_{\max}$ bytes, $d$ words for the coordinates, where $d$ is the number of dimensions, and two for the complex strength of each point, so its size grows linearly with $S_{\max}$. While the buffer fits in the core's private L2 cache, the lines written for one subproblem stay in cache until the next one overwrites them. Once it no longer fits, buffer lines are evicted during gathering and must be fetched from memory when the kernel processes them, so the gather step suffers more cache misses and stalls. The same increase in $S_{\max}$ that makes the subgrid smaller per point therefore makes the gather miss more, and very large subgrids eventually leave the L3 cache as well. $S_{\max}$ trades memory traffic in the add step against memory traffic in the gather step.
 
 The two effects can be put on one scale by estimating the number of DRAM lines (64 bytes) the spreading stage reads and writes per nonuniform point. Each subproblem holds about $S_{\max}$ points; write $A_d(S_{\max})$ for its mean subgrid size. Then
 \begin{equation}
@@ -198,10 +198,10 @@ The two effects can be put on one scale by estimating the number of DRAM lines (
 where $\lambda$ is the number of subgrid cache lines per point, $\beta$ the number of cache lines that store the coordinates and the strength of a point, and $u$ the number of unique subgrid lines touched by the spreading kernel per point. Whether the subgrid and the buffer stay in cache is modeled by log-linear interpolation between the size at which each starts to spill and the size at which it no longer fits at all,
 \begin{equation}
     h_{\mathrm{sub}} = \mathrm{ramp}\Bigl(2\,\texttt{sizeof(PREC)}\, A_d(S_{\max});\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr), \qquad
-    h_{\mathrm{buf}} = \mathrm{ramp}\Bigl((d + 2)\,\texttt{sizeof(PREC)}\, S_{\max};\ \tfrac{1}{2} C_3,\ 2\, C_3\Bigr),
+    h_{\mathrm{buf}} = \mathrm{ramp}\Bigl((d + 2)\,\texttt{sizeof(PREC)}\, S_{\max};\ C_2,\ 2\, C_3\Bigr),
     \label{eq:traffic_ramps}
 \end{equation}
-where $\mathrm{ramp}(x; a, c) = \min\bigl(1, \max(0, \ln(x/a) / \ln(c/a))\bigr)$, and $C_3$ is the thread's share of the L3 cache.
+where $\mathrm{ramp}(x; a, c) = \min\bigl(1, \max(0, \ln(x/a) / \ln(c/a))\bigr)$, $C_2$ is the size of the core's private L2 cache, and $C_3$ is the thread's share of the L3 cache. The buffer ramp starts at $C_2$ rather than at a fraction of $C_3$ because the buffer is read back by the kernel immediately after it is written, so it is fast only while it stays in L2.
 Spreading a subproblem causes the following reads and writes:
 \begin{enumerate}
     \item \emph{Gather.} The $d + 1$ coordinates and the strength of each point are read from the input arrays and written into the staging buffer. Once the buffer no longer fits in cache, each of its lines is fetched before it is written ($\beta\, h_{\mathrm{buf}}$ reads) and written back to memory afterwards ($\beta\, h_{\mathrm{buf}}$ writes).
@@ -216,7 +216,7 @@ The total numbers of reads and writes per point are
     \mathrm{writes} &= \beta\, h_{\mathrm{buf}} + (2\lambda + u)\, h_{\mathrm{sub}} + \lambda. \label{eq:spread_writes}
 \end{align}
 
-$S_{\max}$ moves the terms in opposite directions: raising it lowers $\lambda$ but raises $h_{\mathrm{buf}}$ and $h_{\mathrm{sub}}$, which is the trade-off described above. Against the line counts of the processor's memory controllers, the estimate of reads plus writes has a median error of $7\%$ over $360$ measured configurations of dimension, precision, density, bin size and $S_{\max}$, listed in Appendix~\ref{app:traffic}.
+$S_{\max}$ moves the terms in opposite directions: raising it lowers $\lambda$ but raises $h_{\mathrm{buf}}$ and $h_{\mathrm{sub}}$, which is the trade-off described above. Against the line counts of the processor's memory controllers, the estimate of reads plus writes has a median error of $7\%$ over $360$ measured configurations, listed in Appendix~\ref{app:traffic}.
 
 Figure~\ref{fig:maxsp_traffic_model} compares the estimate of reads plus writes with the measured spreading time for the reference transform on $1$, $10$ and $20$ threads. On a single thread the best performance is at $S_{\max} \approx 10^5$ and the curve is convex, while on $20$ threads it becomes flat and the best-performing values lie at both ends of the range.
 
@@ -344,9 +344,10 @@ bins, so halving every side of a bin multiplies their number by $2^d$. Each of t
 The traffic can be estimated in the same terms as that of the spreading stage. Because the bins of consecutive points are random, every counter line is equally likely to be needed next. While the histogram fits in the thread's share of the cache every counter access hits. Once it does not, a counter access misses with probability
 \begin{equation}
     P_{\mathrm{count}} = \max\Bigl(0,\ 1 - \frac{C_3}{4\,n_{\mathrm{bins}}}\Bigr), \qquad
-    P_{\mathrm{place}} = \max\Bigl(0,\ 1 - \frac{C_3}{8\,M/n_t + 4\,n_{\mathrm{bins}}}\Bigr)
+    P_{\mathrm{place}} = \max\Bigl(0,\ 1 - \frac{C_3}{64\,\min\bigl(n_{\mathrm{bins}},\ M/(8 n_t)\bigr) + 4\,n_{\mathrm{bins}}}\Bigr)
     \label{eq:sort_counts_miss}
 \end{equation}
+In the placement pass the thread keeps, besides its histogram, one partly filled $64$-byte line of \texttt{ret} open for every bin, but never more lines than its share of \texttt{ret} holds, $M/(8 n_t)$, since each line takes eight indices.
 Leaving out the compulsory traffic, which is the same for every bin size -- the coordinates read once by each pass and one line of \texttt{ret} written for every eight points -- and adding the passes that zero the histograms and turn them into offsets, the bin-dependent traffic of the sort is
 \begin{align}
     \mathrm{reads}  &= P_{\mathrm{count}} + 2 P_{\mathrm{place}} + \frac{n_t\, n_{\mathrm{bins}}}{8\,M}, \label{eq:sort_reads}\\
@@ -354,9 +355,9 @@ Leaving out the compulsory traffic, which is the same for every bin size -- the 
 \end{align}
 lines per nonuniform point. Each term belongs to one step of the sort:
 \begin{enumerate}
-    \item \emph{Zeroing.} Each thread clears its histogram of $n_{\mathrm{bins}}$ counters, fetching and writing $n_t n_{\mathrm{bins}}/(8 M)$ lines per point over all threads.
+    \item \emph{Zeroing.} Each thread clears its histogram of $n_{\mathrm{bins}}$ counters, fetching and writing $n_t n_{\mathrm{bins}}/(16 M)$ lines per point over all threads.
     \item \emph{Counting pass.} Once the counter histogram no longer fits in cache, the counter line is fetched from memory and later written back ($P_{\mathrm{count}}$ reads and writes).
-    \item \emph{Prefix sum.} The counters are turned into the offset at which each bin starts in \texttt{ret}, reading and writing the histogram once more, another $n_t n_{\mathrm{bins}}/(8 M)$ lines per point. Together the two steps give the last term of Equations~\eqref{eq:sort_reads} and~\eqref{eq:sort_writes}.
+    \item \emph{Prefix sum.} The counters are turned into the offset at which each bin starts in \texttt{ret}, reading and writing the histogram once more, another $n_t n_{\mathrm{bins}}/(16 M)$ lines per point. Together the two steps give the last term of Equations~\eqref{eq:sort_reads} and~\eqref{eq:sort_writes}.
     \item \emph{Placement pass.} The coordinates are read again, the offset of the point's bin is read and advanced ($P_{\mathrm{place}}$ reads and writes), and the point's index is written into the open line of its bin in \texttt{ret}. One line of \texttt{ret} is written for every eight points; if the open line was evicted before it was full, it must be fetched again and written back once more (another $P_{\mathrm{place}}$ reads and writes).
 \end{enumerate}
 A bin size therefore trades the add traffic of Equations~\eqref{eq:spread_reads} and~\eqref{eq:spread_writes}, which falls as the bins shrink, against the sort traffic of Equations~\eqref{eq:sort_reads} and~\eqref{eq:sort_writes}, which rises.
@@ -443,21 +444,21 @@ Table~\ref{tab:selection_results} compares the selected configurations with the 
         \cmidrule(lr){2-4} \cmidrule(lr){5-5}
         transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
         \midrule
-        1D double & $2.05$ & $1.46$ & $1.08$ & $1.80$ \\
-        1D single & $2.15$ & $1.55$ & $1.18$ & $1.78$ \\
-        2D double & $1.37$ & $1.22$ & $1.10$ & $1.57$ \\
-        2D single & $1.48$ & $1.30$ & $1.09$ & $1.72$ \\
-        3D double & $1.08$ & $0.97$ & $0.96$ & $0.94$ \\
-        3D single & $1.16$ & $0.99$ & $1.00$ & $0.91$ \\
+        1D double & $1.99$ & $1.47$ & $1.11$ & $1.76$ \\
+        1D single & $2.10$ & $1.56$ & $1.19$ & $1.73$ \\
+        2D double & $1.30$ & $1.15$ & $1.09$ & $1.39$ \\
+        2D single & $1.45$ & $1.27$ & $1.08$ & $1.66$ \\
+        3D double & $1.07$ & $0.99$ & $0.95$ & $0.97$ \\
+        3D single & $1.13$ & $1.00$ & $0.96$ & $0.97$ \\
         \midrule
-        all $54$ & $1.50$ & $1.23$ & $1.07$ & $1.40$ \\
+        all $54$ & $1.45$ & $1.22$ & $1.06$ & $1.37$ \\
         \bottomrule
     \end{tabular}
     \caption{Speed-up of sort plus spreading, selected against default configuration.}
     \label{tab:selection_results}
 \end{table}
 
-The gains are largest in one dimension, $2.05$ to $2.15$ times, and smallest in three dimensions, only $1.08$ to $1.16$ times, where no bin larger than the default fits in L1d, so the procedure keeps the default $16 \times 4 \times 4$. The three transforms that became slower are all of this kind: the selected $S_{\max}$ is large enough to leave each thread only a few subproblems, so the work is unevenly divided among the threads, an effect the traffic estimate does not contain.
+The gains are largest in one dimension, $1.99$ to $2.10$ times, and smallest in three dimensions, only $1.07$ to $1.13$ times, where no bin larger than the default fits in L1d, so the procedure keeps the default $16 \times 4 \times 4$. Of the eight transforms that became slower on $20$ threads, six are of this kind, by at most $6\%$: the selected $S_{\max}$ is large enough to leave each thread only a few subproblems, so the work is unevenly divided among the threads, an effect the traffic estimate does not contain. The other two are sparse two-dimensional transforms in double precision, $1\%$ and $12\%$ slower, for which the estimate favours a configuration that the measurement does not.
 
 With fewer threads the gains shrink. Spreading is then limited by latency and computation rather than by bandwidth, so savings in DRAM traffic no longer show in the run time, and in three dimensions, where the bins do not change at all, the selection is no better than the defaults.
 
@@ -472,14 +473,14 @@ With fewer threads the gains shrink. Spreading is then limited by latency and co
         \cmidrule(lr){2-4} \cmidrule(lr){5-5}
         transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
         \midrule
-        1D double & $2.10$ & $1.43$ & $1.08$ & $1.82$ \\
-        1D single & $2.13$ & $1.51$ & $1.18$ & $1.82$ \\
-        2D double & $1.28$ & $1.18$ & $1.10$ & $1.16$ \\
-        2D single & $1.37$ & $1.25$ & $1.09$ & $1.23$ \\
-        3D double & $1.04$ & $1.04$ & $0.96$ & $1.16$ \\
-        3D single & $1.08$ & $1.05$ & $1.00$ & $1.13$ \\
+        1D double & $1.99$ & $1.42$ & $1.11$ & $1.77$ \\
+        1D single & $2.04$ & $1.50$ & $1.19$ & $1.80$ \\
+        2D double & $1.23$ & $1.09$ & $1.09$ & $1.25$ \\
+        2D single & $1.32$ & $1.22$ & $1.08$ & $1.19$ \\
+        3D double & $1.03$ & $1.05$ & $0.96$ & $1.18$ \\
+        3D single & $1.06$ & $1.06$ & $0.97$ & $1.12$ \\
         \midrule
-        all $54$ & $1.44$ & $1.23$ & $1.07$ & $1.36$ \\
+        all $54$ & $1.39$ & $1.21$ & $1.06$ & $1.36$ \\
         \bottomrule
     \end{tabular}
     \caption{Throughput improvement of sort plus spreading, selected against default configuration.}
@@ -500,14 +501,14 @@ Table~\ref{tab:selection_work} measures the CPU time of sorting and spreading, t
         transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
         \midrule
         \multicolumn{5}{l}{\emph{$S_{\max}$ alone, against the library defaults}} \\
-        1D double & $1.08$ & $1.01$ & $0.98$ & $1.04$ \\
-        1D single & $1.01$ & $0.99$ & $0.98$ & $1.00$ \\
-        2D double & $1.08$ & $1.12$ & $1.02$ & $1.02$ \\
-        2D single & $1.07$ & $1.13$ & $1.01$ & $1.04$ \\
-        3D double & $1.04$ & $1.04$ & $0.96$ & $1.16$ \\
-        3D single & $1.08$ & $1.05$ & $1.00$ & $1.13$ \\
+        1D double & $1.04$ & $1.00$ & $1.01$ & $1.01$ \\
+        1D single & $0.97$ & $0.99$ & $0.99$ & $0.98$ \\
+        2D double & $1.11$ & $1.04$ & $1.03$ & $1.16$ \\
+        2D single & $1.04$ & $1.10$ & $1.00$ & $1.01$ \\
+        3D double & $1.03$ & $1.05$ & $0.96$ & $1.18$ \\
+        3D single & $1.06$ & $1.06$ & $0.97$ & $1.12$ \\
         \cmidrule(lr){1-5}
-        all $54$ & $1.06$ & $1.05$ & $0.99$ & $1.06$ \\
+        all $54$ & $1.04$ & $1.04$ & $0.99$ & $1.08$ \\
         \bottomrule
     \end{tabular}
     \caption{Throughput improvement of sort plus spreading when only $S_{\max}$ is

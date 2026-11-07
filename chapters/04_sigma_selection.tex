@@ -105,12 +105,12 @@ $1/\log_2 \tilde{N}$ trend.
 \subsection{Validating the Spreading Cost Model}
 \label{sec:validate_spreading}
 
-To validate the $w^d$ scaling predicted by the model, spreading time was measured across one, two and three dimensions for a range of $\sigma$ values at tolerance $\varepsilon = 10^{-6}$. As shown in Figure~\ref{fig:sigma_sweep_1e6}, the theoretical curves follow the same trajectory as the measurements, including the location of the minimum. Throughput changes in steps, because spreading is vectorised and at every kernel size the number of operations rounds up to the nearest multiple of the SIMD width. Figure~\ref{fig:sigma_sweep_all} in Appendix~\ref{app:maxsp_sweeps} shows the same graphs for a range of common transform configurations at several tolerances.
+To validate the $w^d$ scaling predicted by the model, spreading time was measured on a single thread across one, two and three dimensions for a range of $\sigma$ values at tolerance $\varepsilon = 10^{-6}$. As shown in Figure~\ref{fig:sigma_sweep_1e6}, the theoretical curves follow the same trajectory as the measurements, including the location of the minimum. The one exception is the step the model predicts at $\sigma = 1.35$ in two dimensions, which the measurement does not show. Throughput changes in steps, because spreading is vectorised and at every kernel size the number of operations rounds up to the nearest multiple of the SIMD width. Figure~\ref{fig:sigma_sweep_all} in Appendix~\ref{app:maxsp_sweeps} shows the same graphs for a range of common transform configurations at several tolerances.
 
 \begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/sigma_sweep/sigma_sweep_1e6.pdf}
-    \caption{Measured spreading time and the modelled spreading cost against $\sigma$ at $\varepsilon = 10^{-6}$ in double precision, for one, two and three dimensions.}
+    \caption{Measured spreading time and the modelled spreading cost against $\sigma$ at $\varepsilon = 10^{-6}$ in double precision, for one, two and three dimensions, on one thread of the platform of Section~\ref{sec:platform}.}
     \label{fig:sigma_sweep_1e6}
 \end{figure}
 
@@ -122,7 +122,7 @@ spreading kernel.
 
 The two cost models behave very differently under measurement. The spreading
 model is accurate: across one, two and three dimensions the measured time steps
-at the same $\sigma$ the model does and holds flat between those steps, so it
+at nearly every $\sigma$ the model does and holds flat between those steps, so it
 can be used to locate the $\sigma$ that minimises spreading cost without
 profiling. The FFT model is not accurate in the same sense. The
 $\mathcal{O}(\tilde{N} \log \tilde{N})$ expression is an asymptotic guide whose

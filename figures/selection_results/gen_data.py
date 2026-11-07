@@ -23,8 +23,11 @@ import statistics as st
 from collections import defaultdict
 
 HERE = pathlib.Path(__file__).parent
-SEGMENTS = (("uniform_20", "sw_uni20.txt"), ("uniform_10", "sw_uni10.txt"),
-            ("uniform_1", "sw_uni1.txt"), ("exponential_20", "sw_exp20.txt"))
+# raw/l2/: re-measured 2026-11-06 with the configurations chosen by the Chapter 6
+# equations (traffic_model_thesis.py, h_buf ramp from L2 to 2 C3); the logs directly
+# in raw/ are the earlier run with the configurations of the analysis code.
+SEGMENTS = (("uniform_20", "l2/sw_uni20.txt"), ("uniform_10", "l2/sw_uni10.txt"),
+            ("uniform_1", "l2/sw_uni1.txt"), ("exponential_20", "l2/sw_exp20.txt"))
 DENSITIES = (0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32)
 PRECISIONS = (("double", "d"), ("single", "f"))
 GROUPS = tuple(f"{d}D {p}" for d in (1, 2, 3) for p, _ in PRECISIONS)

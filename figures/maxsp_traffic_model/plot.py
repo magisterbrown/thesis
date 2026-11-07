@@ -5,7 +5,7 @@ Data: traffic.csv -- the reference transform (2D type-1 double precision, M = 33
 5793^2 modes, tol = 1e-6, library defaults except S_max, bins 16x4) on 1, 10 and 20 threads
 (one per core); built by perf/binsweep/make_traffic_csv.py. "time" is the measured wall time of
 the spreading loop; "model" is the sum of Equations spread_reads and spread_writes (fitted ramp ends:
-h_sub from C3/2 to 2 C3, h_buf from C2 to 1.5 C3) at the run's own fine grid and kernel width.
+h_sub from C3/2 to 2 C3, h_buf from C2 to 2 C3) at the run's own fine grid and kernel width.
 Both are divided by their value at the default S_max = min(1e5, M/n_thr).
 
 Writes traffic.{pdf,png} next to this script.

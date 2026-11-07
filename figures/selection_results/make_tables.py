@@ -24,8 +24,7 @@ DENSITIES = ("0.125", "0.25", "0.5", "1", "2", "4", "8", "16", "32")
 CHAPTER = {"tab:selection_results": "speedup",
            "tab:selection_work": "work",
            "tab:selection_split": [
-               (r"$S_{\max}$ alone, against the library defaults", "sp_work"),
-               (r"bin dimensions in addition, against $S_{\max}$ alone", "bins_work")]}
+               (r"$S_{\max}$ alone, against the library defaults", "sp_work")]}
 APPENDIX = {"tab:app_selection_speedup": "speedup",
             "tab:app_selection_work": "work",
             "tab:app_sp_speedup": "sp",
