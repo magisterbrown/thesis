@@ -40,7 +40,7 @@ This section lists, for each of the $54$ test transforms of Table~\ref{tab:selec
         3D single & $16{\times}4{\times}4$ / $4.2$M & $16{\times}4{\times}4$ / $4.2$M & $16{\times}4{\times}4$ / $92$k & $16{\times}4{\times}4$ / $256$k & $16{\times}4{\times}4$ / $545$k & $16{\times}4{\times}4$ / $1.2$M & $16{\times}4{\times}4$ / $1.2$M & $16{\times}4{\times}4$ / $1.1$M & $16{\times}4{\times}4$ / $51$k \\
         \bottomrule
     \end{tabular}}
-    \caption{Bin dimensions and $S_{\max}$ selected for each test transform, on $20$, $10$ and $1$ threads. The exponentially distributed points use the configurations selected for $20$ threads.}
+    \caption{Selected bins and $S_{\max}$ per test transform. Exponential points use the $20$-thread choices.}
     \label{tab:app_selection_picks}
 \end{table}
 
@@ -87,7 +87,7 @@ This section lists, for each of the $54$ test transforms of Table~\ref{tab:selec
         3D single & $0.88$ & $0.92$ & $0.91$ & $0.91$ & $0.95$ & $1.08$ & $1.04$ & $1.01$ & $1.02$ \\
         \bottomrule
     \end{tabular}
-    \caption{Speed-up of the bin sort plus the spreading stage with the selected configuration over the library defaults, for each test transform. Values below one are slowdowns.}
+    \caption{Speed-up of sort plus spreading per test transform over the defaults. Values below one are slowdowns.}
     \label{tab:app_selection_speedup}
 \end{table}
 
@@ -134,7 +134,7 @@ This section lists, for each of the $54$ test transforms of Table~\ref{tab:selec
         3D single & $1.35$ & $1.32$ & $1.29$ & $1.23$ & $1.12$ & $0.90$ & $0.97$ & $0.99$ & $1.02$ \\
         \bottomrule
     \end{tabular}
-    \caption{Reduction of the CPU time of the bin sort plus the spreading stage, the thread-seconds summed over all threads, with the selected configuration against the library defaults, for each test transform. Values below one mean more CPU time.}
+    \caption{CPU-time reduction of sort plus spreading per test transform over the defaults. Values below one mean more CPU time.}
     \label{tab:app_selection_work}
 \end{table}
 
@@ -178,7 +178,7 @@ This section repeats the comparison with the bins kept at the library default, $
         3D single & $4.2$M & $4.2$M & $92$k & $256$k & $545$k & $1.2$M & $1.2$M & $1.1$M & $51$k \\
         \bottomrule
     \end{tabular}
-    \caption{$S_{\max}$ selected for each test transform when the bins are kept at the library default, on $20$, $10$ and $1$ threads. The exponentially distributed points use the values selected for $20$ threads.}
+    \caption{$S_{\max}$ selected per test transform with the default bins. Exponential points use the $20$-thread choices.}
     \label{tab:app_sp_picks}
 \end{table}
 
@@ -225,7 +225,7 @@ This section repeats the comparison with the bins kept at the library default, $
         3D single & $0.88$ & $0.92$ & $0.91$ & $0.91$ & $0.95$ & $1.08$ & $1.04$ & $1.01$ & $1.02$ \\
         \bottomrule
     \end{tabular}
-    \caption{Speed-up of the bin sort plus the spreading stage with the default bins and the selected $S_{\max}$ over the library defaults, for each test transform. Values below one are slowdowns.}
+    \caption{Speed-up of sort plus spreading per test transform with only $S_{\max}$ selected. Values below one are slowdowns.}
     \label{tab:app_sp_speedup}
 \end{table}
 
@@ -272,6 +272,6 @@ This section repeats the comparison with the bins kept at the library default, $
         3D single & $1.35$ & $1.32$ & $1.29$ & $1.23$ & $1.12$ & $0.90$ & $0.97$ & $0.99$ & $1.02$ \\
         \bottomrule
     \end{tabular}
-    \caption{Reduction of the CPU time of the bin sort plus the spreading stage, the thread-seconds summed over all threads, with the default bins and the selected $S_{\max}$ against the library defaults, for each test transform. Values below one mean more CPU time.}
+    \caption{CPU-time reduction of sort plus spreading per test transform with only $S_{\max}$ selected. Values below one mean more CPU time.}
     \label{tab:app_sp_work}
 \end{table}

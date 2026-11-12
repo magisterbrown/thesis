@@ -71,8 +71,8 @@ The FFT operates on the upsampled grid of total size $\tilde{N} = \mathrm{next23
 \begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/fft_cost/ducc_fft_scaling.pdf}
-    \caption{DUCC FFT throughput for complex-to-complex transforms in one, two
-    and three dimensions at single and double precision multithreaded and single threaded versions.}
+    \caption{DUCC FFT throughput of complex transforms in 1D, 2D and 3D, single and double
+    precision, single- and multithreaded.}
     \label{fig:ducc_fft_scaling}
 \end{figure}
 
@@ -110,7 +110,7 @@ To validate the $w^d$ scaling predicted by the model, spreading time was measure
 \begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/sigma_sweep/sigma_sweep_1e6.pdf}
-    \caption{Measured spreading time and the modelled spreading cost against $\sigma$ at $\varepsilon = 10^{-6}$ in double precision, for one, two and three dimensions, on one thread of the platform of Section~\ref{sec:platform}.}
+    \caption{Measured spreading time and modelled cost against $\sigma$, $\varepsilon = 10^{-6}$, double precision, on one thread of the test platform.}
     \label{fig:sigma_sweep_1e6}
 \end{figure}
 

@@ -23,7 +23,7 @@ To find out what limits the spreading stage, the reference transform (Section~\r
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.85\textwidth]{figures/memory_bound/scaling.pdf}
-    \caption{DRAM bandwidth consumed by the spreading stage (top) and instructions retired per cycle summed over all threads (bottom) for the reference transform, against the number of threads. The dotted line extends the throughput of one thread linearly; the shaded region uses both hardware threads of each core.}
+    \caption{DRAM bandwidth (top) and summed IPC (bottom) of the spreading stage against thread count, reference transform. Dotted: one thread scaled linearly; shaded: two hardware threads per core.}
     \label{fig:memory_bound}
 \end{figure}
 
@@ -66,7 +66,7 @@ cells along $x$ while it stays inside one row, where $r$ expresses that reach as
 \begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/subgrid_layout/subgrid_layout.pdf}
-    \caption{Bounding boxes of the first 20 subgrids at $S_{\max}=2500$, coloured by whether the subproblem crosses a bin-row boundary.}
+    \caption{First 20 subgrids at $S_{\max}=2500$, coloured by whether they cross a bin-row boundary.}
     \label{fig:subgrid_overlap}
 \end{figure}
 The first clamp, $f = \min(1, r)$, is a probability, and it saturates at one because a run longer than a row always spans the full width. The second clamp, $\max(1, r)$, is a row count, and it is floored at one because a straddling run covers two rows however short it is; for $r \geq 1$ the first term vanishes and the expression reduces to $(N_x + w)\bigl((r+1) b_y + w\bigr)$, the run starting at an arbitrary offset and therefore touching $r + 1$ rows on average.
@@ -174,7 +174,7 @@ Table~\ref{tab:subgrid_pred} compares the three predictions against subgrid size
         \caption{Wrapping subgrid}
         \label{fig:subgrid_cuboid_wrapping}
     \end{subfigure}
-    \caption{Points of one subproblem (red) among all nonuniform points, coloured by position in the sorted array.}
+    \caption{Points of one subproblem (red) among all points, coloured by sorted position.}
     \label{fig:subgrid_cuboid_examples}
 \end{figure}
 
@@ -223,7 +223,7 @@ Figure~\ref{fig:maxsp_traffic_model} compares the estimate of reads plus writes 
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.75\textwidth]{figures/maxsp_traffic_model/traffic.pdf}
-    \caption{DRAM lines read and written per nonuniform point by the spreading stage of the reference transform on $20$ threads against $S_{\max}$: measured by the memory controllers, and estimated as the sum of Equations~\eqref{eq:spread_reads} and~\eqref{eq:spread_writes}. The dotted vertical line marks the library default, $S_{\max} = 10^5$.}
+    \caption{Measured and estimated DRAM lines per point of the spreading stage against $S_{\max}$, reference transform, $20$ threads. Dotted line: library default.}
     \label{fig:maxsp_traffic_model}
 \end{figure}
 
@@ -367,7 +367,7 @@ A bin size therefore trades the add traffic of Equations~\eqref{eq:spread_reads}
 \begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/binsort_locality/binsort_locality.pdf}
-    \caption{Three levels of sorting of the same point set, coloured by position in the array the spreader reads: without sorting a contiguous run of points is scattered over the whole grid, while bin sorting confines it to a band as tall as the bin.}
+    \caption{The same points at three levels of sorting, coloured by position in the array the spreader reads. Bin sorting confines a contiguous run to a band one bin tall.}
     \label{fig:binsort_locality}
 \end{figure}
 
@@ -454,7 +454,7 @@ Table~\ref{tab:selection_results} compares the selected configurations with the 
         all $54$ & $1.45$ & $1.22$ & $1.06$ & $1.37$ \\
         \bottomrule
     \end{tabular}
-    \caption{Speed-up of sort plus spreading, selected against default configuration.}
+    \caption{Speed-up of sort plus spreading over the defaults.}
     \label{tab:selection_results}
 \end{table}
 
@@ -483,7 +483,7 @@ With fewer threads the gains shrink. Spreading is then limited by latency and co
         all $54$ & $1.39$ & $1.21$ & $1.06$ & $1.36$ \\
         \bottomrule
     \end{tabular}
-    \caption{Throughput improvement of sort plus spreading, selected against default configuration.}
+    \caption{Throughput gain of sort plus spreading over the defaults.}
     \label{tab:selection_work}
 \end{table}
 
@@ -511,8 +511,7 @@ Table~\ref{tab:selection_work} measures the CPU time of sorting and spreading, t
         all $54$ & $1.04$ & $1.04$ & $0.99$ & $1.08$ \\
         \bottomrule
     \end{tabular}
-    \caption{Throughput improvement of sort plus spreading when only $S_{\max}$ is
-    selected, with the bins left at the library default.}
+    \caption{Throughput gain of sort plus spreading with only $S_{\max}$ selected.}
     \label{tab:selection_split}
 \end{table}
 

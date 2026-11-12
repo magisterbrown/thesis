@@ -29,7 +29,7 @@ Using the benchmark configurations distributed with FINUFFT (covering a range of
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.85\textwidth]{figures/parameter_importance/stage_breakdown.pdf}
-    \caption{Fraction of total call time spent in each stage (\texttt{makeplan}, \texttt{setpts}, \texttt{execute}), by transform type.}
+    \caption{Share of call time per stage (\texttt{makeplan}, \texttt{setpts}, \texttt{execute}) by transform type.}
     \label{fig:stage_breakdown}
 \end{figure}
 
@@ -59,14 +59,14 @@ Figure~\ref{fig:gp_histogram} shows the distribution of times across all complet
         $b_x \times b_y$ & $16 \times 4$ & $258 \times 9$ \\
         \hline
     \end{tabular}
-    \caption{Parameter values of the best configuration found by the Gaussian process search, against the values the library uses for this input.}
+    \caption{Best configuration of the Gaussian-process search against the library defaults.}
     \label{tab:gp_best}
 \end{table}
 
 \begin{figure}[ht]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/parameter_importance_2d/optuna_histogram_2d.pdf}
-    \caption{Distribution of measured times across the search trials, with the library default and the best configuration found marked; trials slower than the eight-second cap were stopped there rather than measured.}
+    \caption{Measured times of the search trials, with the default and the best configuration marked. Trials were stopped at eight seconds.}
     \label{fig:gp_histogram}
 \end{figure}
 
@@ -75,7 +75,7 @@ To quantify the relative contribution of each parameter, functional ANOVA (fANOV
 \begin{figure}[ht]
     \centering
     \includegraphics[width=\textwidth]{figures/parameter_importance_2d/importance_2d.pdf}
-    \caption{Relative parameter importance from functional ANOVA, over all search trials and over the trials with sorting enabled.}
+    \caption{fANOVA parameter importance over all trials and over trials with sorting enabled.}
     \label{fig:importance}
 \end{figure}
 
@@ -103,7 +103,7 @@ Table~\ref{tab:opentuner_best} gives the configuration it found. Measured three 
         $b_x \times b_y$ & $16 \times 4$ & $30 \times 121$ \\
         \hline
     \end{tabular}
-    \caption{Parameter values of the best configuration found by OpenTuner on the reference workload, against the values the library uses for this input.}
+    \caption{Best configuration of the OpenTuner search against the library defaults.}
     \label{tab:opentuner_best}
 \end{table}
 
