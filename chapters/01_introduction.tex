@@ -87,44 +87,55 @@ range:
     \item the \emph{atomic-update threshold}, any number of threads, was set to $10$.
 \end{itemize}
 These defaults were tuned by the authors for common combinations of transform
-and CPUs. They stay the same, however, while transforms vary widely in
+and CPUs. 
+Goal of this thesis is to choose best value 
+based on
 dimension, point density, accuracy, thread count and the machine they run on.
 
-The right value is hard to guess because each parameter affects performance
-nonlinearly, through more than one stage of the transform. For example a type-1 transform runs in four stages. First, the points are \emph{sorted} into bins. Next, they
+\section{Hypothesis}
+\label{sec:hypothesis}
+
+The right value of a parameter is hard to guess because it affects performance
+nonlinearly, through more than one stage of the transform. A type-1 transform
+runs in four stages. First, the points are \emph{sorted} into bins. Next, they
 are \emph{spread} onto a fine grid: each thread gathers a subproblem of points,
 spreads them into a private subgrid and adds that subgrid to the shared grid.
 The grid is then transformed by an \emph{FFT}, and finally the result is
 \emph{deconvolved} to remove the effect of the kernel.
 
-Consider the upsampling factor, which fixes how much larger the fine grid is than
-the output grid. Raising it increases number of grid points, so the FFT in the middle of the
-algorithm transforms more data and takes longer. But a larger grid also allows
-narrow the spreading kernel that
-suffices for the same accuracy, and spreading touches fewer cells for every
-point it deposits. The same change therefore makes one stage more expensive and
-another cheaper. Which effect wins depends on the number of points per grid
-cell, the requested accuracy, and how much of the grid fits in cache. The
-maximum subproblem size and the bin dimensions behave the same way. The
-subproblem size trades gathering against adding, and the bin dimensions trade
-the cost of the sort against that of spreading and adding. A user who wants to
-set them well therefore needs to know more than that a parameter is important:
-which stages it moves, in which directions, and what decides where the two
-effects balance.
+Consider the upsampling factor, which fixes how much larger the fine grid is
+than the output grid. Raising it increases the number of grid points, so the FFT
+transforms more data and takes longer. But a larger grid also lets a narrower
+spreading kernel reach the same accuracy, so spreading touches fewer cells for
+every point it deposits. The same change therefore makes one stage more
+expensive and another cheaper. The maximum subproblem size and the bin
+dimensions behave the same way: the subproblem size trades gathering against
+adding, and the bin dimensions trade the cost of the sort against that of
+spreading and adding.
 
-A faster configuration often exists. Beatty et al.~\cite{beatty2005}
-showed that the conventional upsampling factor of two is not required. A whole
-family of upsampling factors and kernel widths reaches any given accuracy, so
-the grid can be made smaller if the kernel is made wider. How to choose within
-that family has been approached by measurement. gNUFFTW~\cite{ou2017} tunes a
-GPU nonuniform transform by running candidate configurations during planning and
+Better configurations than the defaults are known to exist, but so far they
+have been found by search. Beatty et al.~\cite{beatty2005} showed that the
+conventional upsampling factor of two is not required. A whole family of
+upsampling factors and kernel widths reaches any given accuracy, so the grid can
+be made smaller if the kernel is made wider. How to choose within that family
+has been approached by measurement. gNUFFTW~\cite{ou2017} tunes a GPU
+nonuniform transform by running candidate configurations during planning and
 keeping the fastest, and reports order-of-magnitude gains from the oversampling
 ratio alone. FFTW~\cite{frigo2005} does the same for the ordinary FFT, assembling
 each transform from interchangeable steps and timing the candidates on the
-machine it finds itself on. General frameworks such as OpenTuner~\cite{ansel2014opentuner}
-apply the idea to arbitrary programs. What all of these produce is a
-configuration that is fast for a specific input, on the machine where the search
-was run.
+machine it finds itself on. General frameworks such as
+OpenTuner~\cite{ansel2014opentuner} apply the idea to arbitrary programs. Each
+of these finds a configuration that is fast for one input on the machine where
+the search ran, but not the reason it is fast, so the search has to be repeated
+for every new input and machine.
+
+The hypothesis of this thesis is that such a search is not needed. Because each
+parameter trades the cost of one stage against another, its best value lies
+where the two costs balance. That point should be set by quantities known before
+the transform runs: the dimension, precision and point density of the
+transform, the requested accuracy, and the cache sizes of the machine. Models of
+the stage costs written in these terms should therefore choose better values
+than the defaults without running any candidate configuration.
 
 \section{Aim and Scope}
 \label{sec:aim_scope}
