@@ -47,10 +47,10 @@ Transforms were driven by the test programs that ship with FINUFFT (\texttt{perf
 Unless a chapter states otherwise, measurements used one reference transform, chosen to be large enough that its working set far exceeds the L3 cache:
 
 \begin{itemize}
-    \item a type~1 transform in two dimensions, in double precision;
-    \item $M = 2^{30}/32 = 33{,}554{,}432$ nonuniform points, so that the point data (two coordinates and one complex strength, $32$ bytes per point) occupies one gibibyte;
-    \item $N_1 = N_2 = 5793$ Fourier modes, the integer nearest $\sqrt{M}$, which gives a density of $\rho = M/(N_1 N_2) \approx 1$ point per mode;
-    \item requested tolerance $\varepsilon = 10^{-6}$;
+    \item a type~1 transform in two dimensions, in double precision
+    \item $M = 2^{30}/32 = 33{,}554{,}432$ nonuniform points, so that the point data (two coordinates and one complex strength, $32$ bytes per point) occupies one gibibyte
+    \item $N_1 = N_2 = 5793$ Fourier modes, the integer nearest $\sqrt{M}$, which gives a density of $\rho = M/(N_1 N_2) \approx 1$ point per mode
+    \item requested tolerance $\varepsilon = 10^{-6}$
     \item points drawn uniformly at random over the domain.
 \end{itemize}
 
@@ -77,9 +77,9 @@ The three stages of processing a subproblem -- gathering its points, spreading t
 Each configuration was run twice. The first run used \texttt{perf stat}, which only reads the hardware counters at the start and end of the run and so does not perturb it; it yielded the total number of cycles and the total count of every other event of interest. The second run used \texttt{perf record}, which samples the same events and records the function executing at each sample. The share of samples that fell in each function then split the total from \texttt{perf stat} between the stages. The functions were grouped as follows:
 
 \begin{itemize}
-    \item \textbf{sorting}: \texttt{bin\_sort\_singlethread} and \texttt{bin\_sort\_multithread};
+    \item \textbf{sorting}: \texttt{bin\_sort\_singlethread} and \texttt{bin\_sort\_multithread}
     \item \textbf{gathering}: the body of the OpenMP region in \texttt{spreadSorted}. The gather loop is inlined into this body rather than being a function of its own, so this bucket also contains the enclosing subproblem loop and the allocation and zeroing of each subgrid.
-    \item \textbf{spreading}: \texttt{spread\_subproblem\_$d$d} and its kernel instantiations;
+    \item \textbf{spreading}: \texttt{spread\_subproblem\_$d$d} and its kernel instantiations
     \item \textbf{adding}: \texttt{add\_wrapped\_subgrid}.
 \end{itemize}
 

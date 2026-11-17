@@ -3,12 +3,14 @@
 \label{ch:background}
 
 This chapter introduces the background the rest of the thesis builds on. It
-first describes the nonuniform fast Fourier transform and how FINUFFT divides it
-into stages, with particular attention to the spreading stage. It then reviews
-related work on choosing NUFFT parameters, on organising the spreading stage and
-on explaining performance.
+first describes the nonuniform fast Fourier transform. It then reviews how FFT
+and NUFFT libraries choose their configuration and organise the spreading stage,
+how their performance can be explained, and what existing work leaves open.
+Chapter~\ref{ch:finufft} then describes FINUFFT, the library studied in this
+thesis.
 
 \section{Nonuniform Fast Fourier Transforms}
+\label{sec:nufft}
 
 The standard Discrete Fourier Transform (DFT) operates on uniformly sampled data. Many practical applications, however, involve data sampled at irregular (nonuniform) locations. The Nonuniform Fast Fourier Transform (NUFFT) generalizes the FFT to handle such data efficiently.
 
@@ -21,43 +23,24 @@ Three types of NUFFT are commonly distinguished, according to which side of the 
 
 The direct evaluation of any of these costs $O(MN)$. The NUFFT reduces this to $O(M + N \log N)$ by moving the problem onto a uniform grid where an FFT can be used. Each nonuniform point is first convolved with a smooth, rapidly decaying kernel $\varphi$ of width $w$ grid cells, which spreads its contribution over the $w^d$ surrounding cells. This grid is finer than the output grid by an upsampling factor $\sigma > 1$, so that the aliasing caused by the convolution falls outside the band of interest. After the FFT, the convolution is undone by dividing each mode by the kernel's Fourier transform, a stage called deconvolution. The requested tolerance $\varepsilon$ and the upsampling factor $\sigma$ together determine the kernel width $w$.
 
-\subsection{Structure of a transform}
-\label{sec:transform_structure}
+These two parameters can be traded against each other without violating the requested tolerance. Beatty et al.~\cite{beatty2005} showed that the conventional upsampling factor of two is not required. Instead, a whole family of pairs of upsampling factor $\sigma$ and kernel width $w$ reaches any given accuracy, because a smaller factor can be compensated by a wider kernel. For the exponential of semicircle kernel, Barnett~\cite{barnett2021aliasing} proved that the aliasing error decays exponentially in the kernel width, at a rate set by the upsampling factor. As a result, any $\sigma$ in a range above one can reach the requested accuracy, and the choices differ only in cost.
 
-FINUFFT~\cite{barnett2019} exposes this algorithm through three calls, and the parameters studied in this thesis act on different ones. A transform is created with \texttt{makeplan}, given its nonuniform points with \texttt{setpts}, and evaluated with \texttt{execute}. This split lets several transforms that share the same points reuse one plan.
-
-\texttt{makeplan} does no work on the data, but fixes every quantity the later stages depend on. From the tolerance and the upsampling factor it selects the kernel width $w$ and precomputes the coefficients used to evaluate the kernel quickly. It also chooses the size of the fine grid, evaluates the kernel's Fourier series for the later deconvolution, and creates the FFT plan.
-
-\texttt{setpts} accepts the nonuniform points, and its main task is to sort them. In recent versions it also revisits the choice of upsampling factor once the point density is known.
-
-\texttt{execute} performs the transform in three phases. For a type 1, it spreads the nonuniform strengths onto the fine grid, transforms that grid with the FFT, and deconvolves each mode. A type 2 runs the same phases in reverse. It scales the uniform inputs by the reciprocal kernel coefficients, applies the FFT, and interpolates the values at the nonuniform points from the fine grid.
-
-\subsection{Type 3 as a composition of types 1 and 2}
-
-A type 3 transform has nonuniform points on both sides, so neither side lies on a grid. FINUFFT computes it by chaining the other two types~\cite{barnett2019}: a type 1 produces an intermediate uniform grid, and an inner type 2 evaluates that grid at the output frequencies. Most of the extra work is done in \texttt{setpts}, where the inner plan and the deconvolution factors for each target are built.
-
-\subsection{The spreading stage}
-
-The spreading stage is the one this thesis is most concerned with, and it is not a single loop. The sorted points are divided into subproblems, and each thread processes one subproblem at a time into a private buffer called a subgrid. This prevents threads from contending for the shared output grid. Processing a subproblem has three steps. \emph{Gathering} copies the subproblem's coordinates and strengths into contiguous scratch space. \emph{Spreading} evaluates the kernel around each point and accumulates the result into the subgrid. \emph{Adding} accumulates the finished subgrid into the shared grid, wrapping at the periodic boundary. Interpolation, the type-2 direction, has no adding step, since it reads from the grid rather than writing to it. Chapter~\ref{ch:parameter_tuning} shows that the three steps respond to the spreader's parameters in different, often opposing, directions.
-
-\section{Related Work}
+\section{Performance of FFT and NUFFT Libraries}
 \label{sec:related_work}
 
-Work related to this thesis falls into three groups. The first concerns how FFT and NUFFT libraries choose their configuration, the second how NUFFT implementations organise spreading, and the third the tools used to explain where a program spends its time. This section reviews each group, describes the FFT library used in this thesis, and closes with the research gap.
+Existing work on the performance of FFT and NUFFT libraries falls into three groups. The first concerns how libraries choose their configuration, the second how NUFFT implementations organise spreading, and the third the tools used to explain where a program spends its time. This section reviews each group, describes the FFT library used in this thesis, and closes with the research gap.
 
-\subsection{Choosing a configuration}
+\subsection{Parameter selection in FFT and NUFFT libraries}
 \label{sec:related_tuning}
 
-FFT and NUFFT libraries choose their configuration in one of two ways. Planner-based libraries measure. FFTW~\cite{frigo2005} times candidate plans on the machine it runs on and keeps the fastest, so its choice adapts to the hardware. gNUFFTW~\cite{ou2017}, the closest prior work on NUFFT configuration, applies the same approach to NUFFTs on GPUs. Both pay a planning time that can far exceed the time of a single transform, which is repaid only when a plan is reused many times. NFFT3~\cite{keiner2009}, a widely used CPU alternative to FINUFFT, takes the opposite approach, as does FINUFFT itself: when the user sets nothing, fixed defaults apply. NFFT3 exposes more of its parameters than FINUFFT, but it likewise leaves the trade-offs between them to the user.
+FFT and NUFFT libraries choose their configuration in one of two ways. Planner-based libraries measure. FFTW~\cite{frigo2005} times candidate plans on the machine it runs on and keeps the fastest, so its choice adapts to the hardware. gNUFFTW~\cite{ou2017}, the closest prior work on NUFFT configuration, applies the same approach to NUFFTs on GPUs. Both pay a planning time that can far exceed the time of a single transform, which is repaid only when a plan is reused many times. NFFT3~\cite{keiner2009}, a widely used CPU library, takes the opposite approach: when the user sets nothing, fixed defaults apply. NFFT3 exposes many of its parameters, but it leaves the trade-offs between them to the user.
 
-Earlier research analysed how the parameters of the spreading kernel can be varied without violating the requested tolerance. Beatty et al.~\cite{beatty2005} showed that the conventional upsampling factor of two is not required. Instead, a whole family of pairs of upsampling factor $\sigma$ and kernel width $w$ reaches any given accuracy, because a smaller factor can be compensated by a wider kernel. For the kernel that FINUFFT uses, Barnett~\cite{barnett2021aliasing} proved that the aliasing error decays exponentially in the kernel width, at a rate set by the upsampling factor. FINUFFT uses this relation to derive $w$ from the tolerance and $\sigma$. As a result, every $\sigma$ in the interval studied in Chapter~\ref{ch:sigma_selection} reaches the requested accuracy, and the values differ only in cost.
-
-gNUFFTW searches exactly this family, and its findings show how much the choice matters. It tunes the oversampling ratio $\alpha$ and the kernel width $W$, which correspond to $\sigma$ and $w$ here. A tuned ratio improved performance by up to an order of magnitude over the fixed ratios $1.125$ and $2$, whereas FINUFFT's rule chooses only between $1.25$ and $2$. The best ratio depended on how the run time was split between spreading and the FFT: it was close to $2$ when spreading dominated, and fell as spreading became cheaper. gNUFFTW traces this split to how strongly the data are undersampled: the fewer nonuniform samples there are per grid point, the smaller the share of spreading in the run time. In the terms of this thesis, this corresponds to the point density $\rho$, so gNUFFTW's finding is that the best upsampling factor falls with density, the trade-off that Chapter~\ref{ch:sigma_selection} models for FINUFFT. gNUFFTW, however, locates this optimum by search rather than by modelling.
+gNUFFTW searches exactly this family, and its findings show how much the choice matters. It tunes the oversampling ratio $\alpha$ and the kernel width $W$, which correspond to $\sigma$ and $w$ here. A tuned ratio improved performance by up to an order of magnitude over the fixed ratios $1.125$ and $2$. The best ratio depended on how the run time was split between spreading and the FFT: it was close to $2$ when spreading dominated, and fell as spreading became cheaper. gNUFFTW traces this split to how strongly the data are undersampled: the fewer nonuniform samples there are per grid point, the smaller the share of spreading in the run time. In the terms of this thesis, this corresponds to the point density $\rho$, so gNUFFTW's finding is that the best upsampling factor falls with density, the trade-off that Chapter~\ref{ch:sigma_selection} models. gNUFFTW, however, locates this optimum by search rather than by modelling.
 
 \subsection{Organising the spreading stage}
 \label{sec:related_libraries}
 
-NUFFT implementations organise spreading around two units: a sorting unit that groups nearby points, and a work unit that sets number of points one processor spreads into a private grid slice. They differ in whether the two units are the same. In gpuNUFFT~\cite{knoll2014gpunufft}, one of the implementations gNUFFTW chooses among, a single unit called the sector plays both roles. A sector is a cube of the fine grid: samples are sorted by sector, and each sector is spread by one processor into shared memory. The sector width therefore fixes both the sort granularity and the size of the region each processor writes. FINUFFT, in contrast, separates the two roles. Its bins only group the points, and a subproblem is a run of up to $S_{\max}$ sorted points that may span many bins. The size of a subgrid therefore depends on both the bin dimensions and $S_{\max}$.
+NUFFT implementations organise spreading around two units: a sorting unit that groups nearby points, and a work unit that sets number of points one processor spreads into a private grid slice. They differ in whether the two units are the same. In gpuNUFFT~\cite{knoll2014gpunufft}, one of the implementations gNUFFTW chooses among, a single unit called the sector plays both roles. A sector is a cube of the fine grid: samples are sorted by sector, and each sector is spread by one processor into shared memory. The sector width therefore fixes both the sort granularity and the size of the region each processor writes. FINUFFT, in contrast, separates the two roles (Section~\ref{sec:spreading_stage}). Its bins only group the points, and a subproblem is a run of up to $S_{\max}$ sorted points, possibly spanning many bins, that one thread spreads into a private grid slice called a subgrid. The size of a subgrid therefore depends on both the bin dimensions and $S_{\max}$.
 
 cuFINUFFT~\cite{shih2021}, the GPU counterpart of FINUFFT, keeps this separation, with a limit on the points per subproblem that plays the role of $S_{\max}$. The parameters studied in Chapter~\ref{ch:parameter_tuning} therefore have direct counterparts on the GPU. The constraint on them differs, however. On the GPU the padded subgrid must fit in shared memory, which sets a hard limit on the bin dimensions. On the CPU, a working set that spills from a cache is only slower. Despite their effect on performance, these structural parameters have received little attention. gNUFFTW keeps the sector width at the recommended value of $8$ and leaves it out of its search. In the released FINUFFT, the bin dimensions are compile-time constants that cannot be changed at all.
 
@@ -78,7 +61,7 @@ Whether a step is limited by computation or by data movement is described by the
     P \le \min\left(P_{\text{peak}},\; I \cdot B\right),
     \label{eq:roofline}
 \end{equation}
-where $P_{\text{peak}}$ is the peak floating-point rate of the processor and $B$ the bandwidth of the memory the data comes from. At low intensity a kernel is memory-bound and its speed is set by bandwidth. At high intensity it is compute-bound. Each level of the cache hierarchy has its own bandwidth, so a kernel whose working set spills from one level to the next becomes slower without its arithmetic changing. The stages studied in this thesis sit on different sides of this bound. The adding step does little arithmetic per cell written, so it is memory-bound. Spreading evaluates the kernel $w^d$ times per point, so it is compute-bound as long as the region it writes stays in cache.
+where $P_{\text{peak}}$ is the peak floating-point rate of the processor and $B$ the bandwidth of the memory the data comes from. At low intensity a kernel is memory-bound and its speed is set by bandwidth. At high intensity it is compute-bound. Each level of the cache hierarchy has its own bandwidth, so a kernel whose working set spills from one level to the next becomes slower without its arithmetic changing. The steps of spreading (Section~\ref{sec:spreading_stage}) sit on different sides of this bound. The adding step does little arithmetic per cell written, so it is memory-bound. Spreading evaluates the kernel $w^d$ times per point, so it is compute-bound as long as the region it writes stays in cache.
 
 \subsection{Limitations of existing work}
 \label{sec:related_gap}

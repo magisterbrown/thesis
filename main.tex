@@ -28,6 +28,13 @@
 % Line spacing
 \onehalfspacing
 
+% No single-word last lines: the last line of a paragraph must fill at least
+% a quarter of the line, so TeX re-breaks the paragraph instead of leaving one
+% word alone. Floats reset \parfillskip, so captions get the same rule.
+\setlength{\parfillskip}{0pt plus 0.75\textwidth}
+\DeclareCaptionJustification{norunt}{\setlength{\parfillskip}{0pt plus 0.75\linewidth}}
+\captionsetup{justification=norunt}
+
 % Code listing style
 \lstset{
     basicstyle=\ttfamily\small,
@@ -89,6 +96,7 @@
 % Chapters
 \input{chapters/01_introduction}
 \input{chapters/02_background}
+\input{chapters/02b_finufft}
 \input{chapters/02a_methodology}
 \input{chapters/03_parameter_importance}
 \input{chapters/04_sigma_selection}

@@ -73,17 +73,17 @@ defaults and heuristics, all of which the user could override by any value in co
 range:
 \begin{itemize}
     \item the \emph{upsampling factor} $\sigma$, range is any real between 1.15 and 2.0, heuristics choose 
-    $1.25$, or $2$ when the point density or the requested accuracy was high;
+    $1.25$, or $2$ when the point density or the requested accuracy was high
     \item the \emph{maximum subproblem size} $S_{\max}$, from $1$ to the number of
     points per thread $M/n_{\mathrm{thr}}$, was $10^5$ points in two
     and three dimensions and $10^4$ in one, or fewer if a thread had fewer points
-    than that;
+    than~that
     \item the \emph{bin dimensions}, integer from $1$ to the fine-grid size $N_i$ along
     each axis, were $16$ grid cells along the $x$ axis and
-    $4$ along the others, a constant compiled into the library;
+    $4$ along the others, a constant compiled into the library
     \item \emph{sorting of nonuniform points by coordinates}, either on or off,
     and was enabled by heuristics for inputs of
-    realistic size;
+    realistic size
     \item the \emph{atomic-update threshold}, any number of threads, was set to $10$.
 \end{itemize}
 These defaults were tuned by the authors for common combinations of transform
@@ -184,8 +184,7 @@ measurement results, and a selection procedure built on those models.
     \item \textbf{Bin dimensions exposed as public options.} The bin dimensions
     are compile-time constants in the released library. They are added as fields
     of the public options structure, \texttt{finufft\_opts}, so that they can be
-    set at run time like any other parameter and their effect on performance
-    studied.
+    set at run time like any other parameter and their effect on performance~\mbox{studied}.
 \end{itemize}
 
 \paragraph{Empirical}
@@ -234,9 +233,11 @@ measurement results, and a selection procedure built on those models.
 \section{Thesis Organization}
 
 The remainder of this thesis is organised as follows.
-Chapter~\ref{ch:background} introduces the nonuniform fast Fourier transform,
-the structure FINUFFT gives it, and the prior work on choosing parameters by
-measurement.
+Chapter~\ref{ch:background} introduces the nonuniform fast Fourier transform
+and reviews how FFT and NUFFT libraries choose their parameters and how their
+performance is explained.
+Chapter~\ref{ch:finufft} describes FINUFFT: the stages of a transform, the
+organisation of its spreading stage, and its configuration parameters.
 Chapter~\ref{ch:methodology} describes the machine, the workloads and the
 instrumentation on which every later measurement rests, including how the
 stages of a subproblem are separated from one another.

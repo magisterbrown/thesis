@@ -205,7 +205,7 @@ where $\mathrm{ramp}(x; a, c) = \min\bigl(1, \max(0, \ln(x/a) / \ln(c/a))\bigr)$
 Spreading a subproblem causes the following reads and writes:
 \begin{enumerate}
     \item \emph{Gather.} The $d + 1$ coordinates and the strength of each point are read from the input arrays and written into the staging buffer. Once the buffer no longer fits in cache, each of its lines is fetched before it is written ($\beta\, h_{\mathrm{buf}}$ reads) and written back to memory afterwards ($\beta\, h_{\mathrm{buf}}$ writes).
-    \item \emph{Zeroing.} The subgrid is cleared before spreading. Once it no longer fits in cache, each of its lines is fetched before it is cleared ($\lambda\, h_{\mathrm{sub}}$ reads) and the cleared lines are written back ($\lambda\, h_{\mathrm{sub}}$ writes).
+    \item \emph{Zeroing.} The subgrid is cleared before spreading. Once it no longer fits in cache, each of its lines is fetched before it is cleared ($\lambda\, h_{\mathrm{sub}}$ reads) and the cleared lines are written back ($\lambda\, h_{\mathrm{sub}}$~writes).
     \item \emph{Spreading kernel.} The kernel reads the points back from the buffer, fetching them again if they have been evicted ($\beta\, h_{\mathrm{buf}}$ reads), and updates the subgrid lines covered by the kernels of the points, fetching and writing back the $u$ unique lines ($u\, h_{\mathrm{sub}}$ reads and writes).
     \item \emph{Adding.} The finished subgrid is read back ($\lambda\, h_{\mathrm{sub}}$ reads) and written back once more ($\lambda\, h_{\mathrm{sub}}$ writes), and the matching part of the fine grid is read and written ($\lambda$ reads and $\lambda$ writes).
 \end{enumerate}

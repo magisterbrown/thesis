@@ -1,0 +1,43 @@
+% !TEX root = ../main.tex
+\chapter{FINUFFT}
+\label{ch:finufft}
+
+This chapter describes FINUFFT~\cite{barnett2019}, the library studied in this
+thesis. It explains how the library divides a transform into calls and stages,
+how it computes a type~3 transform, how its spreading stage is organised, and
+which configuration parameters it exposes.
+
+\section{Structure of a Transform}
+\label{sec:transform_structure}
+
+FINUFFT exposes the algorithm of Section~\ref{sec:nufft} through three calls, and the parameters studied in this thesis act on different ones. A transform is created with \texttt{makeplan}, given its nonuniform points with \texttt{setpts}, and evaluated with \texttt{execute}. This split lets several transforms that share the same points reuse one plan.
+
+\texttt{makeplan} does no work on the data, but fixes every quantity the later stages depend on. From the tolerance and the upsampling factor it selects the kernel width $w$, using the exponential of semicircle kernel and Barnett's bound (Section~\ref{sec:nufft}), and precomputes the coefficients used to evaluate the kernel quickly. Every $\sigma$ in the interval studied in Chapter~\ref{ch:sigma_selection} therefore reaches the requested accuracy. It also chooses the size of the fine grid, evaluates the kernel's Fourier series for the later deconvolution, and creates the FFT plan.
+
+\texttt{setpts} accepts the nonuniform points, and its main task is to sort them. In recent versions it also revisits the choice of upsampling factor once the point density is known. Unlike gNUFFTW (Section~\ref{sec:related_tuning}), which tunes the ratio over a continuous range, FINUFFT's rule chooses only between $1.25$ and $2$. Like NFFT3, FINUFFT otherwise applies fixed defaults when the user sets nothing.
+
+\texttt{execute} performs the transform in three phases. For a type 1, it spreads the nonuniform strengths onto the fine grid, transforms that grid with the FFT, and deconvolves each mode. A type 2 runs the same phases in reverse. It scales the uniform inputs by the reciprocal kernel coefficients, applies the FFT, and interpolates the values at the nonuniform points from the fine grid.
+
+\section{Type 3 as a Composition of Types 1 and 2}
+
+A type 3 transform has nonuniform points on both sides, so neither side lies on a grid. FINUFFT computes it by chaining the other two types~\cite{barnett2019}: a type 1 produces an intermediate uniform grid, and an inner type 2 evaluates that grid at the output frequencies. Most of the extra work is done in \texttt{setpts}, where the inner plan and the deconvolution factors for each target are built.
+
+\section{The Spreading Stage}
+\label{sec:spreading_stage}
+
+The spreading stage is the one this thesis is most concerned with, and it is not a single loop. The sorted points are divided into subproblems, and each thread processes one subproblem at a time into a private buffer called a subgrid. This prevents threads from contending for the shared output grid. Processing a subproblem has three steps. \emph{Gathering} copies the subproblem's coordinates and strengths into contiguous scratch space. \emph{Spreading} evaluates the kernel around each point and accumulates the result into the subgrid. \emph{Adding} accumulates the finished subgrid into the shared grid, wrapping at the periodic boundary. Interpolation, the type-2 direction, has no adding step, since it reads from the grid rather than writing to it. Chapter~\ref{ch:parameter_tuning} shows that the three steps respond to the spreader's parameters in different, often opposing, directions.
+
+\section{Configuration Parameters}
+\label{sec:finufft_parameters}
+
+FINUFFT exposes its tunable behaviour through a single options structure called \texttt{finufft\_opts}. Its fields fall into three groups. Data handling options (\texttt{modeord}, \texttt{spreadinterponly}) change the convention used to order output modes or restrict the call to spreading/interpolation only, and do not by themselves change the amount of work performed. Diagnostic options (\texttt{debug}, \texttt{spread\_debug}, \texttt{showwarn}) control logging and are irrelevant to performance. The remaining, performance relevant options are:
+\begin{itemize}
+    \item \texttt{nthreads}: number of threads used for the transform.
+    \item \texttt{spread\_sort}: whether nonuniform points are sorted before spreading (\texttt{0} off, \texttt{1} on, \texttt{2} heuristic~choice).
+    \item \texttt{upsampfac}: the upsampling factor $\sigma$ real number in the range $[1.25;2.00]$, treated in depth in Chapter~\ref{ch:sigma_selection}.
+    \item \texttt{spread\_thread} and \texttt{maxbatchsize}: control how work is split across threads when multiple strength vectors share the same nonuniform points (vectorized calls, $n_{\mathrm{tr}} > 1$).
+    \item \texttt{spread\_nthr\_atomic}: thread count above which the spreader switches from an OpenMP critical section to atomic updates.
+    \item \texttt{spread\_max\_sp\_size} ($S_{\max}$): integer in the range $[1;\frac{M}{nthr}]$, the maximum number of points in a subproblem of the spreader, written $S_{\max}$ in the rest of this thesis, treated in depth in Chapter~\ref{ch:parameter_tuning}.
+    \item the sort bin dimensions $b_x$, $b_y$ and $b_z$: integers in the range $[1;N_d]$ the size in fine-grid cells of the boxes the nonuniform points are binned into before spreading. Unlike the other entries in this list they are not fields of \texttt{finufft\_opts} at all but constants in the source, fixed at $16$ along the fast axis and $4$ along the slower ones; they are exposed as options here in order to include them in the search, and are treated in depth in Chapter~\ref{ch:parameter_tuning}.
+\end{itemize}
+Two further fields, \texttt{spread\_kerevalmeth} and \texttt{spread\_kerpad}, are retained only for binary compatibility and have no effect on current versions of the library. A third, \texttt{spread\_kerformula}, is reserved for internal debugging. All three are therefore excluded from the analysis that follows.

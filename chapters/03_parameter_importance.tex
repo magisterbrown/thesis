@@ -4,25 +4,10 @@
 
 Before attempting to optimize FINUFFT's parameters, it is necessary to understand which parameters actually matter and to what degree. This chapter presents a global sensitivity analysis of FINUFFT's configuration space.  We first identify where transform time is actually spent across the three transform types (Section~\ref{sec:stage_breakdown}), then use a global, Gaussian process based search to rank the tunable parameters by their contribution to performance (Section~\ref{sec:gp_sensitivity}). The resulting ranking motivates the choice of parameters treated in depth in Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning}.
 
-\section{FINUFFT's Configuration Parameters}
-\label{sec:finufft_parameters}
-
-FINUFFT exposes its tunable behaviour through a single options structure called \texttt{finufft\_opts}. Its fields fall into three groups. Data handling options (\texttt{modeord}, \texttt{spreadinterponly}) change the convention used to order output modes or restrict the call to spreading/interpolation only, and do not by themselves change the amount of work performed. Diagnostic options (\texttt{debug}, \texttt{spread\_debug}, \texttt{showwarn}) control logging and are irrelevant to performance. The remaining, performance relevant options are:
-\begin{itemize}
-    \item \texttt{nthreads}: number of threads used for the transform.
-    \item \texttt{spread\_sort}: whether nonuniform points are sorted before spreading (\texttt{0} off, \texttt{1} on, \texttt{2} heuristic choice).
-    \item \texttt{upsampfac}: the upsampling factor $\sigma$ real number in the range $[1.25;2.00]$, treated in depth in Chapter~\ref{ch:sigma_selection}.
-    \item \texttt{spread\_thread} and \texttt{maxbatchsize}: control how work is split across threads when multiple strength vectors share the same nonuniform points (vectorized calls, $n_{\mathrm{tr}} > 1$).
-    \item \texttt{spread\_nthr\_atomic}: thread count above which the spreader switches from an OpenMP critical section to atomic updates.
-    \item \texttt{spread\_max\_sp\_size} ($S_{\max}$): integer in the range $[1;\frac{M}{nthr}]$, the maximum number of points in a subproblem of the spreader, written $S_{\max}$ in the rest of this thesis, treated in depth in Chapter~\ref{ch:parameter_tuning}.
-    \item the sort bin dimensions $b_x$, $b_y$ and $b_z$: integers in the range $[1;N_d]$ the size in fine-grid cells of the boxes the nonuniform points are binned into before spreading. Unlike the other entries in this list they are not fields of \texttt{finufft\_opts} at all but constants in the source, fixed at $16$ along the fast axis and $4$ along the slower ones; they are exposed as options here in order to include them in the search, and are treated in depth in Chapter~\ref{ch:parameter_tuning}.
-\end{itemize}
-Two further fields, \texttt{spread\_kerevalmeth} and \texttt{spread\_kerpad}, are retained only for binary compatibility and have no effect on current versions of the library. A third, \texttt{spread\_kerformula}, is reserved for internal debugging. All three are therefore excluded from the analysis that follows.
-
 \section{Where Does Time Go? Stage-Level Breakdown}
 \label{sec:stage_breakdown}
 
-Every FINUFFT call proceeds through three stages, introduced in Chapter~\ref{ch:background}: \texttt{makeplan}, which precomputes kernel coefficients and creates the FFT plan; \texttt{setpts}, which sorts and preprocesses the nonuniform points; and \texttt{execute}, which performs the actual spreading, FFT, and deconvolution. Before deciding which configuration parameters deserve attention, it is useful to know how much of the total runtime each stage typically accounts for, since a parameter that only affects a negligible stage cannot meaningfully improve overall performance.
+Every FINUFFT call proceeds through three stages, introduced in Chapter~\ref{ch:finufft}: \texttt{makeplan}, which precomputes kernel coefficients and creates the FFT plan; \texttt{setpts}, which sorts and preprocesses the nonuniform points; and \texttt{execute}, which performs the actual spreading, FFT, and deconvolution. Before deciding which configuration parameters deserve attention, it is useful to know how much of the total runtime each stage typically accounts for, since a parameter that only affects a negligible stage cannot meaningfully improve overall performance.
 
 Using the benchmark configurations distributed with FINUFFT (covering a range of precisions, tolerances, dimensions, and both extremal values of $\sigma$), each call was timed and the three stage durations were normalised so that they summed to one. Figure~\ref{fig:stage_breakdown} shows the resulting distribution, split by transform type. For type 1 and type 2 transforms, \texttt{execute} dominates, accounting for the large majority of the total time, while \texttt{setpts} contributes a smaller but non-negligible share and \texttt{makeplan} is close to zero in almost every case. Type 3 transforms show a markedly different balance: \texttt{setpts} and \texttt{execute} contribute comparable shares, reflecting the additional preprocessing type 3 transforms require to handle nonuniform points on both sides of the transform.
 
@@ -37,7 +22,7 @@ This picture was refined further by instrumenting \texttt{setpts} itself, splitt
 
 Together, these observations indicate that parameters affecting the \texttt{execute} stage, and specifically the spreading and FFT stages within it, offer the largest potential impact on performance, with parameters affecting \texttt{setpts} becoming relevant mainly for type 3 transforms or when $M$ is small enough that fixed overheads are not amortised.
 
-\section{Global Sensitivity Analysis via Gaussian-Process Optimization}
+\section[Global Sensitivity Analysis via Gaussian-Process Optimization]{Global Sensitivity Analysis via \mbox{Gaussian-Process Optimization}}
 \label{sec:gp_sensitivity}
 
 A Gaussian-process-based Bayesian optimizer~\cite{rasmussen2006,snoek2012}, as implemented in Optuna~\cite{optuna2019}, searched the joint parameter space and determined the contribution of each configuration parameter. The search space included \texttt{spread\_max\_sp\_size} ($S_{\max}$), \texttt{spread\_sort}, \texttt{upsampfac}, \texttt{spread\_nthr\_atomic} and the two bin dimensions $b_x$ and $b_y$, sampled from the ranges given in Section~\ref{sec:problem_statement}. For each configuration, the optimizer ran the reference transform of Section~\ref{sec:workload} on all $40$ hardware threads and measured the total time of \texttt{setpts} and \texttt{execute}.
