@@ -3,61 +3,136 @@
 \label{ch:background}
 
 This chapter introduces the background the rest of the thesis builds on. It
-first describes the nonuniform fast Fourier transform. It then reviews how FFT
-and NUFFT libraries choose their configuration and organise the spreading stage,
-how their performance can be explained, and what existing work leaves open.
-Chapter~\ref{ch:finufft} then describes FINUFFT, the library studied in this
-thesis.
+starts from the Fourier transform and its discrete counterpart, explains how
+the fast Fourier transform reduces the cost of the latter, and describes how
+the nonuniform fast Fourier transform extends it to irregularly sampled data.
+It then introduces FINUFFT and the configuration parameters this thesis
+studies, and closes with the sources of error that limit the accuracy of a
+NUFFT. Chapter~\ref{ch:finufft} then describes the internals of FINUFFT.
 
 \section{Fourier Transform}
-In 1822 Fourier claimed in (cite  Joseph Fourier § The Analytic Theory of Heat) that any function can be decomposed into sum of differnt of sine functions. Sine functions define different frequencies. It led to the development of the Fourier Transform. Fourier transform is a transformation that takes function as an input and outputs another function that defines magintude of each frequency $k$ is present in the Transform. 
+\label{sec:ft}
+
+In 1822 Fourier claimed that any function can be decomposed into a sum of
+sine and cosine waves of different frequencies~\cite{fourier1822}. This idea
+led to the Fourier transform, which takes a function $f(x)$ as input and
+returns a function $\hat{f}(k)$ that gives the amplitude and phase with which
+each frequency $k$ is present in $f$:
 \begin{equation}
-    \hat{f}(k) = \int_{-\infty}^{\infty} f(x)\, e^{-2\pi i k x}\, \mathrm{d}x,
+    \hat{f}(k) = \int_{-\infty}^{\infty} f(x)\, e^{-2\pi i k x}\, \mathrm{d}x.
     \label{eq:ft}
 \end{equation}
-However, application of it requires continious function as an input.
-\section{DFT}
-Most of the signals that exists in the real world and we want to analyze. Are produced by unknow functions and we can only sample them. To express sampled data as frequencies we should sample it and apply Discrete Fourier Transfrom algorithm. It estimates how each frequency of interest matches all points. 
- \begin{equation}
-      f_k = \sum_{j=0}^{N-1} c_j\, e^{-2\pi i\, jk/N}, \qquad k = 0, \dots, N-1.
-      \label{eq:dft}
-  \end{equation}
+The transform is defined for a continuous function, which must be known at
+every point $x$.
 
-\section{Complexity and FFT}
-DFT algorithm is applicable to any sets of uniformly distributed points. but is Complexity is $NM$ where N is number of points and M is nuber of output modes. Quadratic Complexity limits usability of DFT only to small datasets. James Cooley and John Tukey (add citation) in 1965 demonstrated there exists a redundancy in computing DFT for multiple frequencies at the same time. and total computation for magintudes in N frequencies from N samples can be done in $\mathcal{O}(N \log N)$. But, it requires frequencies of interest and samples to have uniform gaps in between, because  
-FFT implementation widly extended applications of DFT. First of them allowing to process large amounts of data of earth vibrations and to distinguish between regular earth quakes and Soviet nuclear tests. 
+\section{Discrete Fourier Transform}
+\label{sec:dft}
 
-\section{NUFFT}
-However, sometimes we want to analyzed non uniformly distanced data. It has many applications (Several imaging methods, including magnetic resonance
-imaging (MRI) [57, 35], X-ray computed tomography (CT) [18], ultrasound diffrac-
-tion tomography [9], and synthetic aperture radar [3], citations from paper "A PARALLEL NON-UNIFORM FAST FOURIER TRANSFORM
-LIBRARY BASED ON AN “EXPONENTIAL OF SEMICIRCLE”
-KERNEL" pleas recite them) For example, In this cases Non uniform Discrete Fourier Transform NUDFT is possible, but there is no way to reduce Complexity from $\mathcal{O}(N^2)$ to $\mathcal{O}(N \log N)$ without loosing any information. Goal of NUFFT algorithm is to do exactly that: provide approximation of NUDFT result under some error tolerance in lower compute time. It is achieved by first projecting non uniform points onto uniform grid and then run a regular FFT with scaling afterwards. So Complexity goes down from $\mathcal{O}(NM)$ to $\mathcal{O}(N + M \log M)$ where each point is projected using spreading operation and then regular FFT computes result, that are processed with deconvolution to rescale them. There are also 2 extra type of NUFFT. Type 2 processes uniformly sampled points and outputs frequencies of non uniform locations so it includes pre-correction then FFT finally followed by deconvolution. Finally type 3 combines these 2 and processes non uniform points to return non uniform frequency magintudes. 
-
-  \begin{align}
-      \text{Type 1 (nonuniform to uniform):}\quad
-      & f_{\mathbf{k}} = \sum_{j=1}^{M} c_j\, e^{\pm i\, \mathbf{k} \cdot \mathbf{x}_j},
-      && \mathbf{k} \in I_{\mathbf{N}}
-      \label{eq:type1} \\
-      \text{Type 2 (uniform to nonuniform):}\quad
-      & c_j = \sum_{\mathbf{k} \in I_{\mathbf{N}}} f_{\mathbf{k}}\, e^{\pm i\, \mathbf{k} \cdot \mathbf{x}_j},
-      && j = 1, \dots, M
-      \label{eq:type2} \\
-      \text{Type 3 (nonuniform to nonuniform):}\quad
-      & f_l = \sum_{j=1}^{M} c_j\, e^{\pm i\, \mathbf{s}_l \cdot \mathbf{x}_j},
-      && l = 1, \dots, N
-      \label{eq:type3}
-  \end{align}
-
-
+Most signals that are analysed in practice are produced by an unknown function
+and are available only as samples. The frequency content of $N$ equally spaced
+samples $c_0, \dots, c_{N-1}$ is given by the Discrete Fourier Transform (DFT),
+which measures how well each frequency of interest matches the samples:
 \begin{equation}
-    f_{\mathbf{k}} = \sum_{j=1}^{M} c_j\, e^{\pm i\, \mathbf{k} \cdot \mathbf{x}_j},
-    \qquad \mathbf{k} \in \mathbb{Z}^d,\; -\frac{N_i}{2} \le k_i < \frac{N_i}{2},
-    \label{eq:nudft}
+    f_k = \sum_{j=0}^{N-1} c_j\, e^{-2\pi i\, jk/N}, \qquad k = 0, \dots, N-1.
+    \label{eq:dft}
 \end{equation}
 
+\section{Complexity and the Fast Fourier Transform}
+\label{sec:fft}
+
+Evaluated directly, Equation~\eqref{eq:dft} costs $\mathcal{O}(NM)$
+operations for $N$ samples and $M$ output frequencies, which is
+$\mathcal{O}(N^2)$ when both are equal. This quadratic cost restricts the
+direct DFT to small inputs. In 1965 Cooley and Tukey~\cite{cooley1965} showed
+that computing the DFT for all frequencies at once contains redundant work,
+and that all $N$ coefficients can be obtained from $N$ samples in
+$\mathcal{O}(N \log N)$ operations. Their fast Fourier transform (FFT)
+requires both the samples and the frequencies to be equally spaced, because
+it relies on the periodicity of $e^{-2\pi i\, jk/N}$ to split a transform into
+smaller transforms of the same form. The FFT greatly widened the use of the
+DFT. One of its early motivations was the analysis of large volumes of seismic
+data, to distinguish earthquakes from Soviet underground nuclear
+tests~\cite{rockmore2000}.
+
+\section{Nonuniform Fast Fourier Transform}
+\label{sec:nufft}
+
+Many applications, however, involve data that are not equally spaced. Several
+imaging methods sample the Fourier transform at non-Cartesian points,
+including magnetic resonance imaging (MRI)~\cite{sutton2003,lee2005}, X-ray
+computed tomography~\cite{fourmont2003}, ultrasound diffraction
+tomography~\cite{bronstein2002} and synthetic aperture
+radar~\cite{andersson2012}. In these cases the sum of
+Equation~\eqref{eq:dft} can still be evaluated at arbitrary points $x_j$,
+which gives the nonuniform DFT (NUDFT), but the FFT can no longer be used to
+reduce its cost. Write $M$ for the number of nonuniform points and $N$ for the
+number of uniform modes. Three types of transform are distinguished,
+according to which side is nonuniform:
+\begin{align}
+    \text{Type 1 (nonuniform to uniform):}\quad
+    & f_{\mathbf{k}} = \sum_{j=1}^{M} c_j\, e^{\pm i\, \mathbf{k} \cdot \mathbf{x}_j},
+    && \mathbf{k} \in I_{\mathbf{N}},
+    \label{eq:type1} \\
+    \text{Type 2 (uniform to nonuniform):}\quad
+    & c_j = \sum_{\mathbf{k} \in I_{\mathbf{N}}} f_{\mathbf{k}}\, e^{\pm i\, \mathbf{k} \cdot \mathbf{x}_j},
+    && j = 1, \dots, M,
+    \label{eq:type2} \\
+    \text{Type 3 (nonuniform to nonuniform):}\quad
+    & f_l = \sum_{j=1}^{M} c_j\, e^{\pm i\, \mathbf{s}_l \cdot \mathbf{x}_j},
+    && l = 1, \dots, N,
+    \label{eq:type3}
+\end{align}
+where $\mathbf{x}_j \in [-\pi, \pi)^d$ are the nonuniform points, $c_j$ their
+strengths, $\mathbf{s}_l$ nonuniform target frequencies, and
+$I_{\mathbf{N}} = \{\mathbf{k} \in \mathbb{Z}^d : -N_i/2 \le k_i < N_i/2\}$
+the set of uniform modes. Evaluated directly, each of these sums costs
+$\mathcal{O}(MN)$.
+
+The nonuniform fast Fourier transform (NUFFT) computes an approximation of
+the NUDFT to a requested tolerance $\varepsilon$ at a much lower cost. For a
+type~1 transform it proceeds in three stages. \emph{Spreading} convolves each
+nonuniform point with a smooth, rapidly decaying kernel $\varphi$ of width $w$
+grid cells, which distributes its strength over the $w^d$ surrounding cells of
+a uniform grid. This fine grid is larger than the output grid by an
+upsampling factor $\sigma > 1$ in each dimension, so that it has
+$n_i \approx \sigma N_i$ cells along axis $i$. An ordinary FFT is then applied
+to the fine grid. Finally, \emph{deconvolution} keeps the central $N$ modes
+and divides each by the Fourier transform of the kernel, which undoes the
+convolution. This reduces the cost to $\mathcal{O}(M w^d + N \log N)$. A
+type~2 transform runs the same stages in reverse: the coefficients are first
+corrected by the kernel's Fourier transform and padded to the fine grid, an
+FFT follows, and \emph{interpolation} then evaluates the result at each
+nonuniform point as a kernel-weighted sum of the $w^d$ surrounding cells. A
+type~3 transform combines the two: it spreads the nonuniform points and then
+evaluates the result at the nonuniform frequencies with an inner type~2
+transform~\cite{barnett2019}.
+
 \section{FINUFFT}
-FINUFFT is an implementation of NUFFT by Flat Iron institute. It implements all steps required for NUFFT transforms except FFT step itself. Instead it provieds options to choose custom backend for FFT currently FFTW and DUCC are available (Please cite these 2). FINUFFT implementations steps using multiprocessing and highly optimized simd loops. Besides, it exposes for user multiple configuration parameters that allow to tune performance on specific cpu and data combination. These parameters are: Upsampling factor (sigma) - a balancing constant that sets how much FFT algorithm should oversample frequencies beatty2005 showed first that it is possible to set it to values other than 2, it allows to trade off work during spreading agains work during FFT. Maximum subproblem size is a batch size, because when spreading on the multiprocessor points are first split into batches and then distributed between workers. Sorting is an option that helps to group points in batches that are located near each other. Atomic update is threshold option that affects a step of sriting back results of processed batch to shared grid. It sets a threshold number of threads below which shared results grid is protected by a lock while when number of threads above threshold implementation of write back swithces to lock-free algorithm (add citeation to what is a lock free algorthim I had before) implemented using atomic compare and swap (CAS) instructions. They have folowing default parameters: (cite a table).
+\label{sec:finufft_intro}
+
+FINUFFT~\cite{barnett2019,finufftsoftware} is a NUFFT library developed at the
+Flatiron Institute. It implements every stage of the transform except the FFT
+itself, for which it uses an external backend, currently either
+FFTW~\cite{frigo2005} or DUCC~\cite{ducc}. Its stages are parallelised with
+multiple threads and use vectorised (SIMD) loops. FINUFFT also exposes several
+configuration parameters that let the user tune its performance for a given
+processor and input (Table~\ref{tab:finufft_params}):
+\begin{itemize}
+    \item The \emph{upsampling factor} $\sigma$ sets how much larger the fine
+    grid is than the output grid. Beatty et al.~\cite{beatty2005} were the first
+    to show that values other than $2$ can be used, which allows work in the
+    spreading stage to be traded against work in the FFT.
+    \item The \emph{maximum subproblem size} $S_{\max}$ is a batch size. For
+    multithreaded spreading, the points are split into batches, called
+    subproblems, which are distributed among the threads.
+    \item \emph{Sorting} groups points that lie close to each other into the
+    same subproblem.
+    \item The \emph{atomic-update threshold} affects the step that writes the
+    result of a finished subproblem back to the shared grid. Below this number
+    of threads, the shared grid is protected by a lock. Above it, the write-back
+    switches to a lock-free algorithm~\cite{herlihyshavit2012} built on atomic
+    compare-and-swap (CAS) instructions.
+\end{itemize}
 
 \begin{table}[ht]
     \centering
@@ -76,7 +151,15 @@ FINUFFT is an implementation of NUFFT by Flat Iron institute. It implements all 
     \label{tab:finufft_params}
 \end{table}
 
-Finally, binsize is a hardcoded value that sets sides of bins during histogram sorting. Currently it has a value (cite a table) Histogram sort is a partial sorting algorithm of Complexity N. It loops over all points and finds correspoinding bin for each. On the second iteration it just places points into the bins. Larger bins reduce total number and make sorting faster, while points remain more scattered what reduces perfromance at later stages. So, exposing bin size gives an opportunity for performance optimization. 
+Finally, the \emph{bin dimensions} are compile-time constants that set the
+sides of the bins used to sort the points (Table~\ref{tab:finufft_bins}).
+FINUFFT sorts with a histogram (bin) sort, a partial sort whose cost is linear
+in the number of points~\cite{barnett2019}. A first pass over the points
+determines the bin of each point, and a second pass places the points into
+their bins. Larger bins reduce the number of bins and make sorting faster, but
+leave the points within each bin more scattered, which slows the later stages.
+Exposing the bin dimensions therefore creates an opportunity to improve
+performance.
 
 \begin{table}[ht]
     \centering
@@ -92,13 +175,60 @@ Finally, binsize is a hardcoded value that sets sides of bins during histogram s
     \label{tab:finufft_bins}
 \end{table}
 
-\section{Quality Degradation}
-As all NUFFT implementations provide only an approximation of NUDFT expected error bound needs to be estimated. Dutt–Rokhlin [12] gave the first rigorous
-analysis of this error bound. FINUFFT paper also provides rigorous analysis of an error called Kernel error that measures lost information at the step of projecting points to uniform grid and includes truncation and aliasing. First term truncation happens because each point has some magnitude that is 
-added to nearby grid cells. Further grid cell is from point less weight point magnitude has in a total sum of values in the grid cell. Relation between distance and a weight decay is called a kernl and for example in FINUFFT this realtion is defined by (give a formula). At some distance weight of a point becomes very small instead of adding it to grid points afar we just truncate computation. Truncation error comes from skipping calculation for point far away. Second is an aliasing error when non uniform points are projected on uniform grid very high frequencies become indestinguishable forexample if grid has size N then frequency k+N will look exactly like frequency k, and called k value will not represent the truth. FINUFFT rigorously estimates this error for "Exponential of Semicircle" kernel. Lowering upsampling factor increases error because then number of cells in FFT grid get smaller so more frequencies become indistinguishable at the same time lower upsampling factor sets increases kernel width according to (add formula) to partially compensate for growing aliasing error with reducing truncation error. However, some lower tolerances are not achivable with default upsampling factor 1.25 and require higher lower bound. But all valus in between lower bound and 2 achive expected tolerance and can be varied to increase perfromance. 
-Howerver, kernel error esitmated assuming comutation in real numbers while machine operations in double or floating percision introduce some error overhead above.
-Finally, storing point coordintates in machine precision instead of real numbers gives other kind or error called phase error.
-To conclude, kernel error is most singinficatn and analyzed error source while contributions from other error sources come from machine precision and require experimental measurements.
+\section{Sources of Error}
+\label{sec:nufft_error}
 
+Since every NUFFT only approximates the NUDFT, its error has to be bounded.
+Dutt and Rokhlin~\cite{dutt1993} gave the first rigorous analysis of this
+error, for a Gaussian kernel. For FINUFFT, Barnett et
+al.~\cite{barnett2019,barnett2021aliasing} analyse the \emph{kernel error}:
+the information lost when the nonuniform points are spread onto the uniform
+grid. It has two components.
 
+The first is \emph{truncation}. Each point adds its strength to the nearby
+grid cells with a weight that decreases with distance, and the function that
+relates distance to weight is the kernel. FINUFFT uses the \enquote{exponential
+of semicircle} (ES) kernel~\cite{barnett2019},
+\begin{equation}
+    \varphi(z) = e^{\beta\left(\sqrt{1 - z^2} - 1\right)}, \qquad |z| \le 1,
+    \label{eq:es_kernel}
+\end{equation}
+rescaled so that $|z| \le 1$ covers $w$ grid cells, with the shape parameter
+$\beta$ chosen from $w$ and $\sigma$. Beyond some distance the weight is so
+small that the contribution is skipped, and the error caused by skipping these
+distant cells is the truncation error.
 
+The second is \emph{aliasing}. On a grid of $n$ cells, a wave of frequency
+$k + n$ takes exactly the same values as a wave of frequency $k$, so the two
+cannot be distinguished, and the high-frequency content of the spread points
+is added to the coefficient of mode $k$. The kernel damps this content, and
+the upsampling moves the nearest such frequencies, $k \pm n$ with
+$n \approx \sigma N$, further from the kept modes. For the ES kernel the
+combined error decays as~\cite{barnett2021aliasing}
+\begin{equation}
+    \varepsilon \approx e^{-\pi w \sqrt{1 - 1/\sigma}}.
+    \label{eq:es_error}
+\end{equation}
+Lowering the upsampling factor therefore increases the aliasing error, because
+the fine grid becomes smaller and the aliased frequencies move closer to the
+kept band. To compensate, a lower $\sigma$ requires a wider kernel: solving
+Equation~\eqref{eq:es_error} for the width gives
+$w \approx \ln(1/\varepsilon) / \bigl(\pi\sqrt{1 - 1/\sigma}\bigr)$, and the
+wider kernel reduces the truncation error. Because FINUFFT limits the kernel
+width to $16$ cells, the smallest tolerances cannot be reached with the low
+upsampling factor $1.25$ and require a larger lower bound on
+$\sigma$~\cite{finufftsoftware}. Every value between that lower bound and $2$
+reaches the requested tolerance, so $\sigma$ can be varied within this range
+to improve performance.
+
+The kernel error is derived assuming exact arithmetic. Computation in single or
+double precision adds rounding error on top of it, which FINUFFT reports to be
+roughly $N$ times the machine precision in one
+dimension~\cite[Remark~9]{barnett2019}. Storing the point coordinates in
+finite precision causes a further error, referred to here as the \emph{phase
+error}: a slightly wrong coordinate $x_j$ gives a slightly wrong phase
+$k x_j$, and the error grows with the frequency $k$.
+
+In summary, the kernel error is the dominant and best-analysed source of
+error, while the contributions of the other sources stem from machine
+precision and have to be measured experimentally.
