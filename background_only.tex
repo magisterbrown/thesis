@@ -1,0 +1,72 @@
+% !TEX program = xelatex
+\documentclass[a4paper]{tudelft-report}
+
+% Packages not already provided by the tudelft-report class
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{subcaption}
+\usepackage{listings}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{csquotes}
+\usepackage{microtype}
+\usepackage{acronym}
+\usepackage{longtable}
+\usepackage{pdflscape}
+\usepackage{xr}
+\externaldocument{build/main}
+
+% Page geometry
+\geometry{
+    reset,
+    a4paper,
+    top=2.5cm,
+    bottom=2.5cm,
+    left=3cm,
+    right=2.5cm,
+}
+
+% Line spacing
+\onehalfspacing
+
+% No single-word last lines: the last line of a paragraph must fill at least
+% a quarter of the line, so TeX re-breaks the paragraph instead of leaving one
+% word alone. Floats reset \parfillskip, so captions get the same rule.
+\setlength{\parfillskip}{0pt plus 0.75\textwidth}
+\DeclareCaptionJustification{norunt}{\setlength{\parfillskip}{0pt plus 0.75\linewidth}}
+\captionsetup{justification=norunt}
+
+% Code listing style
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red!70!black},
+}
+
+% Avoid unicode-math/hyperref crashes when Greek letters appear in
+% chapter/section titles (used for PDF bookmarks and metadata).
+\pdfstringdefDisableCommands{%
+    \def\sigma{sigma}%
+    \def\gamma{gamma}%
+}
+
+% Cover / title metadata
+\title[tudelft-white]{FINUFFT \mbox{Performance} \mbox{Evaluation}}
+\subtitle[tudelft-black]{Stage-Level Cost Models for Parameter Selection}
+\author[tudelft-white]{Artur Brodovic}
+\affiliation{Technische Universiteit Delft}
+
+\begin{document}
+\mainmatter
+\setcounter{chapter}{1}
+\input{chapters/02_background}
+\bibliographystyle{ieeetr}
+\clearpage
+\bibliography{references}
+\end{document}

@@ -6,9 +6,11 @@ This chapter introduces the background the rest of the thesis builds on. It
 starts from the Fourier transform and its discrete counterpart, explains how
 the fast Fourier transform reduces the cost of the latter, and describes how
 the nonuniform fast Fourier transform extends it to irregularly sampled data.
-It then introduces FINUFFT and the configuration parameters this thesis
-studies, and closes with the sources of error that limit the accuracy of a
-NUFFT. Chapter~\ref{ch:finufft} then describes the internals of FINUFFT.
+It then introduces FINUFFT and its configuration parameters, and the sources
+of error that limit the accuracy of a NUFFT. It then reviews how FFT and NUFFT
+libraries select their parameters and organise spreading, and how their
+performance can be characterised, and closes with what existing work leaves
+open. Chapter~\ref{ch:finufft} then describes the internals of FINUFFT.
 
 \section{Fourier Transform}
 \label{sec:ft}
@@ -50,8 +52,8 @@ $\mathcal{O}(N \log N)$ operations. Their fast Fourier transform (FFT)
 requires both the samples and the frequencies to be equally spaced, because
 it relies on the periodicity of $e^{-2\pi i\, jk/N}$ to split a transform into
 smaller transforms of the same form. The FFT greatly widened the use of the
-DFT. One of its early motivations was the analysis of large volumes of seismic
-data, to distinguish earthquakes from Soviet underground nuclear
+DFT. Its early motivation was the analysis of large volumes of seismic
+data, to distinguish earthquakes from underground nuclear
 tests~\cite{rockmore2000}.
 
 \section{Nonuniform Fast Fourier Transform}
@@ -98,8 +100,8 @@ upsampling factor $\sigma > 1$ in each dimension, so that it has
 $n_i \approx \sigma N_i$ cells along axis $i$. An ordinary FFT is then applied
 to the fine grid. Finally, \emph{deconvolution} keeps the central $N$ modes
 and divides each by the Fourier transform of the kernel, which undoes the
-convolution. This reduces the cost to $\mathcal{O}(M w^d + N \log N)$. A
-type~2 transform runs the same stages in reverse: the coefficients are first
+convolution. This reduces the cost to $\mathcal{O}(M w^d + N \log N)$. During the 
+type~2 transform the coefficients are first
 corrected by the kernel's Fourier transform and padded to the fine grid, an
 FFT follows, and \emph{interpolation} then evaluates the result at each
 nonuniform point as a kernel-weighted sum of the $w^d$ surrounding cells. A
@@ -175,6 +177,11 @@ performance.
     \label{tab:finufft_bins}
 \end{table}
 
+\subsection{FFT Backend}
+\label{sec:related_ducc}
+
+FINUFFT can be built against FFTW, but in this thesis it uses the DUCC library~\cite{ducc} as its FFT backend. DUCC derives its central algorithms from FFTPACK~\cite{fftpack}. The textbook radix-2 FFT~\cite{cooley1965} requires the length to be a power of two. FFTPACK instead factorises the length, $N = p_1 p_2 \cdots p_k$, and makes one pass over the data for each factor. This mixed-radix approach handles any length, but a pass for a factor $p$ costs roughly $p$ operations per element, so large prime factors are expensive. DUCC handles them with Bluestein's algorithm~\cite{bluestein1970}, which keeps the cost at $\mathcal{O}(N \log N)$ for every length. A length with a large prime factor is nevertheless several times slower than a nearby length built from small primes. This is why FINUFFT rounds each fine-grid length up to the next even product of $2$, $3$ and $5$.
+
 \section{Sources of Error}
 \label{sec:nufft_error}
 
@@ -232,3 +239,40 @@ $k x_j$, and the error grows with the frequency $k$.
 In summary, the kernel error is the dominant and best-analysed source of
 error, while the contributions of the other sources stem from machine
 precision and have to be measured experimentally.
+
+\section{Parameter Selection in FFT and NUFFT Libraries}
+\label{sec:related_tuning}
+
+FFT and NUFFT libraries choose their configuration in one of two ways. Planner-based libraries measure. FFTW~\cite{frigo2005} times candidate plans on the machine it runs on and keeps the fastest, so its choice adapts to the hardware. gNUFFTW~\cite{ou2017}, the closest prior work on NUFFT configuration, applies the same approach to NUFFTs on GPUs. Both pay a planning time that can far exceed the time of a single transform, which is repaid only when a plan is reused many times. NFFT3~\cite{keiner2009}, a widely used CPU library, takes the opposite approach: when the user sets nothing, fixed defaults apply. NFFT3 exposes many of its parameters, but it leaves the trade-offs between them to the user.
+
+gNUFFTW searches the family of pairs of upsampling factor and kernel width described in Section~\ref{sec:nufft_error}, and its findings show how much the choice matters. It tunes the oversampling ratio $\alpha$ and the kernel width $W$, which correspond to $\sigma$ and $w$ here. A tuned ratio improved performance by up to an order of magnitude over the fixed ratios $1.125$ and $2$. The best ratio depended on how the run time was split between spreading and the FFT: it was close to $2$ when spreading dominated, and fell as spreading became cheaper. gNUFFTW traces this split to how strongly the data are undersampled: the fewer nonuniform samples there are per grid point, the smaller the share of spreading in the run time. In the terms of this thesis, this corresponds to the point density $\rho$, so gNUFFTW's finding is that the best upsampling factor falls with density, the trade-off that Chapter~\ref{ch:sigma_selection} models. gNUFFTW, however, locates this optimum by search rather than by modelling.
+
+\section{Spreading Parameters in Other NUFFT Implementations}
+\label{sec:related_libraries}
+
+NUFFT implementations organise spreading around two units: a sorting unit that groups nearby points, and a work unit that sets number of points one processor spreads into a private grid slice. They differ in whether the two units are the same. In gpuNUFFT~\cite{knoll2014gpunufft}, one of the implementations gNUFFTW chooses among, a single unit called the sector plays both roles. A sector is a cube of the fine grid: samples are sorted by sector, and each sector is spread by one processor into shared memory. The sector width therefore fixes both the sort granularity and the size of the region each processor writes. FINUFFT, in contrast, separates the two roles (Section~\ref{sec:spreading_stage}). Its bins only group the points, and a subproblem is a run of up to $S_{\max}$ sorted points, possibly spanning many bins, that one thread spreads into a private grid slice called a subgrid. The size of a subgrid therefore depends on both the bin dimensions and $S_{\max}$.
+
+cuFINUFFT~\cite{shih2021}, the GPU counterpart of FINUFFT, keeps this separation, with a limit on the points per subproblem that plays the role of $S_{\max}$. The parameters studied in Chapter~\ref{ch:parameter_tuning} therefore have direct counterparts on the GPU. The constraint on them differs, however. On the GPU the padded subgrid must fit in shared memory, which sets a hard limit on the bin dimensions. On the CPU, a working set that spills from a cache is only slower. Despite their effect on performance, these structural parameters have received little attention. gNUFFTW keeps the sector width at the recommended value of $8$ and leaves it out of its search. In the released FINUFFT, the bin dimensions are compile-time constants that cannot be changed at all.
+
+\section{Performance Characterisation}
+\label{sec:related_perf}
+
+Explaining why a configuration is fast requires seeing where the time goes, and hardware performance counters make this possible. The counters~\cite{intelsdm} are a small set of processor registers that count events, such as cache misses, as a program runs. Which events are available varies between processors, and not all of them are accurate, so they must be chosen with care. The operating system saves and restores the counters as threads are scheduled, which allows counts to be attributed to a single process. On Linux they are read through the \texttt{perf} tool~\cite{perf}, whose features and overhead Weaver~\cite{weaver2013} documents.
+
+Counters alone show how many events occurred, not why a parallel program falls short of its ideal speed-up. Eyerman et al.~\cite{eyerman2012} split that shortfall into one component per cause. The causes include synchronisation, interference between threads in the shared cache and in memory, and imbalance in the work given to each thread. Several of these leave distinguishable traces in \texttt{perf}. Time lost to synchronisation appears as cycles inside the routine that takes the lock or performs the atomic update. Interference appears in the miss counters of the cache level concerned, which can be compared between runs on one thread and on many. Imbalance appears in neither. Instead, it shows as a difference between wall time and cycle count, because a thread that has run out of work retires no cycles while the phase continues.
+
+Whether a step is limited by computation or by data movement is described by the Roofline model of Williams et al.~\cite{williams2009roofline}. The model characterises a kernel by its arithmetic intensity $I$, the number of floating-point operations it performs per byte it moves, and bounds its attainable performance by
+\begin{equation}
+    P \le \min\left(P_{\text{peak}},\; I \cdot B\right),
+    \label{eq:roofline}
+\end{equation}
+where $P_{\text{peak}}$ is the peak floating-point rate of the processor and $B$ the bandwidth of the memory the data comes from. At low intensity a kernel is memory-bound and its speed is set by bandwidth. At high intensity it is compute-bound. Each level of the cache hierarchy has its own bandwidth, so a kernel whose working set spills from one level to the next becomes slower without its arithmetic changing. The steps of spreading (Section~\ref{sec:spreading_stage}) sit on different sides of this bound. The adding step does little arithmetic per cell written, so it is memory-bound. Spreading evaluates the kernel $w^d$ times per point, so it is compute-bound as long as the region it writes stays in cache.
+
+\section{Limitations of Existing Work}
+\label{sec:related_gap}
+
+Existing work either finds a fast configuration by measuring test transforms or relies on fixed defaults. Search-based tuners such as FFTW and gNUFFTW adapt to the hardware, but they do not explain their choice, so the search must be repeated for every new input and machine. The cost of a search is repaid only when a plan is reused many times, which is not how a library call is typically made. Libraries such as NFFT3 and FINUFFT apply the same defaults everywhere, although the transforms they perform and the machines they run on vary widely.
+
+The limitations differ between the parameters. For the upsampling factor, the analysis of Beatty et al.\ and Barnett establishes which values are valid, but not which of them is fastest. FINUFFT chooses between the two ends of that range, $1.25$ and $2.0$, using a precomputed lookup table indexed by density and tolerance, and never uses a value in between. The other parameters that affect spreading have been left out of earlier analyses. gNUFFTW keeps the sector width of gpuNUFFT fixed during tuning, and the released FINUFFT sets its bin dimensions and maximum subproblem size from the number of dimensions alone. On the GPU, gpuNUFFT and cuFINUFFT bound their bins by the size of shared memory, which is a hard limit, and keep the subproblem size below the bin area. On the CPU the same parameters are bounded by the cache instead. Exceeding it does not cause a failure, but it makes spreading slower and increases its memory traffic.
+
+What is missing is an analysis of how each parameter influences each stage of the transform. For every stage, it has to be identified whether the stage is limited by computation or by memory traffic, and how its cost depends on the properties of the machine, the transform and the parameters. No study to date has done such an analysis to evaluate parameter combinations before the transform runs and choose one that provides best performance.
