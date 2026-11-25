@@ -1,6 +1,8 @@
 \chapter{Parameter Analysis \& Reduction}
 \label{ch:parameter_importance}
 
+Not every configuration parameter of FINUFFT deserves a model of its own. This chapter narrows the six performance-relevant parameters down to those that do. It first establishes where a transform spends its time and which stages each parameter acts on (Section~\ref{sec:stage_breakdown}), then ranks the parameters by their effect on the run time with a global search over all of them together (Section~\ref{sec:gp_sensitivity}). Three parameters turn out to have a setting that is best for every transform of realistic size: the thread count, sorting and the atomic-update threshold. They are fixed in Section~\ref{sec:eliminated_params}, on the CPU and on the GPU. The remaining three, the upsampling factor, the maximum subproblem size and the bin dimensions, are analysed in Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning}.
+
 \section{Stage-Level Breakdown}
 \label{sec:stage_breakdown}
 
@@ -37,8 +39,64 @@ The parameters of Section~\ref{sec:finufft_parameters} act on different stages (
 \end{table}
 
 
-\section[Global Sensitivity Analysis via Gaussian-Process Optimization]{Global Sensitivity Analysis via \mbox{Gaussian-Process Optimization}}
+\section[Global Sensitivity Analysis]{Global Sensitivity Analysis}
 \label{sec:gp_sensitivity}
+
+Table~\ref{tab:param_stages} shows which stages each parameter acts on, but not how much each one matters. The parameters cannot be ranked by varying them one at a time, because they interact: the upsampling factor changes the size of the fine grid that the bins divide, and the bin dimensions change how far apart the points of a subproblem lie, and so how large a subgrid a given $S_{\max}$ produces. The parameters were therefore searched jointly, and the variance of the measured run time was attributed to each parameter and to their interactions afterwards. This section first describes the setup on which the search ran, then the search itself and the ranking it produced.
+
+\subsection{Experimental setup}
+
+The search, like every measurement in this thesis, ran on one machine, with one build of FINUFFT, and on one reference transform unless stated otherwise. The three are described below.
+
+\subsubsection{Test Platform}
+
+All experiments in this thesis were run on a single machine, a one-socket server with an Intel Xeon E5-2698 v4 processor (Broadwell-EP microarchitecture). Its relevant properties are listed in Table~\ref{tab:platform}. The processor has one NUMA node, so every thread sees the same memory latency and the memory-contention effects discussed in Chapter~\ref{ch:parameter_tuning} are not confounded by remote-memory accesses. Because the two hardware threads of a core share that core's L1 and L2 caches, the per-thread cache share that the analytical models refer to is half of the per-core capacity whenever all $40$ hardware threads are in use.
+
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{|l|l|}
+        \hline
+        \textbf{Property} & \textbf{Value} \\
+        \hline
+        Processor & Intel Xeon E5-2698 v4 (Broadwell-EP) \\
+        Sockets / NUMA nodes & 1 / 1 \\
+        Cores / hardware threads & 20 / 40 (2-way SMT) \\
+        Clock frequency & 2.2\,GHz base, 3.6\,GHz maximum turbo, 1.2\,GHz minimum \\
+        L1 data cache & 32\,KiB per core (640\,KiB total) \\
+        L1 instruction cache & 32\,KiB per core \\
+        L2 cache & 256\,KiB per core (5\,MiB total) \\
+        L3 cache & 50\,MiB, shared by all cores \\
+        SIMD & AVX2, FMA \\
+        \hline
+    \end{tabular}
+    \caption{Test platform. All measurements in this thesis were taken on this machine.}
+\end{table}
+
+Single-threaded runs were pinned to logical CPU~0 with \texttt{taskset}, so that the operating system could not migrate them between cores mid-measurement. Multi-threaded runs set the thread count through \texttt{OMP\_NUM\_THREADS}; runs described as using ``all threads'' used all $40$ hardware threads.
+% TODO: state OMP_PROC_BIND / OMP_PLACES if they were set, and whether turbo was left enabled.
+
+\subsubsection{Software}
+
+FINUFFT~\cite{finufftsoftware} was built from source in CMake's \texttt{Release} configuration, with DUCC~\cite{ducc} selected as the FFT backend (\texttt{FINUFFT\_USE\_DUCC0=ON}). FFTW is therefore not used anywhere in this thesis: every FFT, and every FFT plan, referred to in the following chapters is DUCC's. The library was modified in two respects. First, the dimensions of the bins used to sort the nonuniform points are compile-time constants in FINUFFT, and were exposed as run-time options so that Chapters~\ref{ch:parameter_importance} and~\ref{ch:parameter_tuning} could vary them. Second, timers were added inside the spreader that record, for each thread, the time spent in each stage of a subproblem and the thread's total busy time, since the library's own timers report only the spreading stage as a whole; Chapter~\ref{ch:parameter_tuning} relies on them.
+% TODO: FINUFFT commit hash, compiler and version, OS / kernel version, perf version.
+
+Transforms were driven by the test programs that ship with FINUFFT (\texttt{perftest} and \texttt{spreadtestnd}), which time the stages of a transform with the library's own internal timers. Microbenchmarks of the FFT and of the spreading kernel in isolation used Google Benchmark~\cite{googlebenchmark}, and the parameter search of Chapter~\ref{ch:parameter_importance} used Optuna~\cite{optuna2019}, repeated with OpenTuner~\cite{ansel2014opentuner} to check that its result does not depend on the search method.
+
+\subsubsection{Reference Workload}
+
+Unless a chapter states otherwise, measurements used one reference transform, chosen to be large enough that its working set far exceeds the L3 cache:
+
+\begin{itemize}
+    \item a type~1 transform in two dimensions, in double precision
+    \item $M = 2^{30}/32 = 33{,}554{,}432$ nonuniform points, so that the point data (two coordinates and one complex strength, $32$ bytes per point) occupies one gibibyte
+    \item $N_1 = N_2 = 5793$ Fourier modes, the integer nearest $\sqrt{M}$, which gives a density of $\rho = M/(N_1 N_2) \approx 1$ point per mode
+    \item requested tolerance $\varepsilon = 10^{-6}$
+    \item points drawn uniformly at random over the domain.
+\end{itemize}
+
+Sweeps over dimension, density, tolerance, thread count and point distribution changed one of these properties at a time, and each figure caption states which.
+
+\subsection{Gaussian-Process Optimization}
 
 A Gaussian-process-based Bayesian optimizer~\cite{rasmussen2006,snoek2012}, as implemented in Optuna~\cite{optuna2019}, searched the joint parameter space and determined the contribution of each configuration parameter. The search space included \texttt{spread\_max\_sp\_size} ($S_{\max}$), \texttt{spread\_sort}, \texttt{upsampfac}, \texttt{spread\_nthr\_atomic} and the two bin dimensions $b_x$ and $b_y$, sampled from the ranges given in Section~\ref{sec:problem_statement}. For each configuration, the optimizer ran the reference transform of Section~\ref{sec:workload} on all $40$ hardware threads and measured the total time of \texttt{setpts} and \texttt{execute}.
 
