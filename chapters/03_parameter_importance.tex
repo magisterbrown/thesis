@@ -1,13 +1,10 @@
-% !TEX root = ../main.tex
-\chapter{Exploring Parameter Importance}
+\chapter{Parameter Analysis \& Reduction}
 \label{ch:parameter_importance}
 
-Before attempting to optimize FINUFFT's parameters, it is necessary to understand which parameters actually matter and to what degree. This chapter presents a global sensitivity analysis of FINUFFT's configuration space.  We first identify where transform time is actually spent across the three transform types (Section~\ref{sec:stage_breakdown}), then use a global, Gaussian process based search to rank the tunable parameters by their contribution to performance (Section~\ref{sec:gp_sensitivity}). The resulting ranking motivates the choice of parameters treated in depth in Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning}.
-
-\section{Where Does Time Go? Stage-Level Breakdown}
+\section{Stage-Level Breakdown}
 \label{sec:stage_breakdown}
 
-Every FINUFFT call proceeds through three stages, introduced in Chapter~\ref{ch:finufft}: \texttt{makeplan}, which precomputes kernel coefficients and creates the FFT plan; \texttt{setpts}, which sorts and preprocesses the nonuniform points; and \texttt{execute}, which performs the actual spreading, FFT, and deconvolution. Before deciding which configuration parameters deserve attention, it is useful to know how much of the total runtime each stage typically accounts for, since a parameter that only affects a negligible stage cannot meaningfully improve overall performance.
+Every FINUFFT call proceeds through three stages, introduced in Section~\ref{sec:transform_structure}: \texttt{makeplan}, which precomputes kernel coefficients and creates the FFT plan; \texttt{setpts}, which sorts and preprocesses the nonuniform points; and \texttt{execute}, which performs the actual spreading, FFT, and deconvolution. Before deciding which configuration parameters deserve attention, it is useful to know how much of the total runtime each stage typically accounts for, since a parameter that only affects a negligible stage cannot meaningfully improve overall performance.
 
 Using the benchmark configurations distributed with FINUFFT (covering a range of precisions, tolerances, dimensions, and both extremal values of $\sigma$), each call was timed and the three stage durations were normalised so that they summed to one. Figure~\ref{fig:stage_breakdown} shows the resulting distribution, split by transform type. For type 1 and type 2 transforms, \texttt{execute} dominates, accounting for the large majority of the total time, while \texttt{setpts} contributes a smaller but non-negligible share and \texttt{makeplan} is close to zero in almost every case. Type 3 transforms show a markedly different balance: \texttt{setpts} and \texttt{execute} contribute comparable shares, reflecting the additional preprocessing type 3 transforms require to handle nonuniform points on both sides of the transform.
 
@@ -18,9 +15,27 @@ Using the benchmark configurations distributed with FINUFFT (covering a range of
     \label{fig:stage_breakdown}
 \end{figure}
 
-This picture was refined further by instrumenting \texttt{setpts} itself, splitting it into its constituent substeps: precomputing kernel Horner coefficients, evaluating the kernel Fourier series used for deconvolution, and creating the FFT plan. These substeps behave largely as fixed, per-call overheads rather than costs that scale with the number of nonuniform points $M$, which is consistent with \texttt{makeplan} and the fixed portion of \texttt{setpts} contributing a shrinking fraction of total time as $M$ grows.
 
-Together, these observations indicate that parameters affecting the \texttt{execute} stage, and specifically the spreading and FFT stages within it, offer the largest potential impact on performance, with parameters affecting \texttt{setpts} becoming relevant mainly for type 3 transforms or when $M$ is small enough that fixed overheads are not amortised.
+The parameters of Section~\ref{sec:finufft_parameters} act on different stages (Table~\ref{tab:param_stages}). The upsampling factor is the only one that reaches all three. It fixes the kernel width and the fine grid in \texttt{makeplan}, changes the number of bins the points are sorted into in \texttt{setpts}, and sets both the spreading work per point and the size of the FFT in \texttt{execute}. Sorting and the bin dimensions decide how much work the sort in \texttt{setpts} does and, through the resulting order of the points, how scattered the points of each subproblem are when \texttt{execute} spreads them. The maximum subproblem size and the atomic-update threshold act only inside the spreading stage of \texttt{execute}: the first sets the size of each subproblem's gather buffer and subgrid, and the second only how the adding step writes to the shared grid.
+
+\begin{table}[ht]
+    \centering
+    \small
+    \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{3.4cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X}
+        \toprule
+        \textbf{Parameter} & \texttt{makeplan} & \texttt{setpts} & \texttt{execute} \\
+        \midrule
+        Upsampling factor $\sigma$ & kernel width, kernel coefficients, fine-grid size, FFT plan & number of bins & spreading work per point, FFT size \\
+        Max.\ subproblem size $S_{\max}$ & -- & -- & gather buffer and subgrid size \\
+        Sorting & -- & whether the points are sorted & locality of spreading \\
+        Atomic-update threshold & -- & -- & lock or atomics in the adding step \\
+        Bin dimensions $b_x$, $b_y$, $b_z$ & -- & number of bins, cost of sorting & locality of spreading, subgrid size \\
+        \bottomrule
+    \end{tabularx}
+    \caption{Stages of a FINUFFT call that each configuration parameter affects.}
+    \label{tab:param_stages}
+\end{table}
+
 
 \section[Global Sensitivity Analysis via Gaussian-Process Optimization]{Global Sensitivity Analysis via \mbox{Gaussian-Process Optimization}}
 \label{sec:gp_sensitivity}
@@ -66,36 +81,25 @@ To quantify the relative contribution of each parameter, functional ANOVA (fANOV
 
 The fANOVA percentages are estimates of how sensitive the execution time is to each parameter, not of how much each parameter can improve it. A parameter scores highly when poor choices of it are expensive, since the variance across the search space is dominated by the worst configurations, and the score says nothing about the headroom left above the library default. A low score is therefore not evidence of irrelevance: $S_{\max}$ scores low here, yet Chapter~\ref{ch:parameter_tuning} shows that it has a substantial effect on the spreading stage.
 
-\section{An Alternative Search with OpenTuner}
-\label{sec:opentuner}
+\section{Eliminated parameters}
+\label{sec:eliminated_params}
 
-A Gaussian-process sampler is not the only way to search this space, and it is worth asking how much of the result depends on it. The same six parameters were therefore searched a second time with OpenTuner~\cite{ansel2014opentuner}, a general framework for tuning program parameters by measurement. Where Optuna fits one surrogate model and proposes the point that model considers most promising, OpenTuner runs an ensemble of search techniques at once -- differential evolution, several greedy mutation schemes and a Nelder--Mead simplex~\cite{nelder1965simplex} among them -- and lets a bandit allocate trials to whichever technique is currently producing improvements. It builds no model of the space, so it gives no importance scores, but it is indifferent to the shape of the objective.
+Three of the performance-relevant parameters of Section~\ref{sec:finufft_parameters} have a setting that is best for every transform of realistic size, so they are fixed in the rest of this thesis rather than analysed further.
 
-The objective and the search space were the same as in Section~\ref{sec:gp_sensitivity}. Each trial ran two repetitions and was abandoned after $20$\,s, which is an order of magnitude above the default configuration's time and so only ever truncates configurations that have already lost. The search was stopped after $147$ trials, of which $44$ were unsorted configurations that hit the cap.
+\emph{Thread count.} Every stage of \texttt{execute} and the sort in \texttt{setpts} are parallelised, so a transform large enough to give each thread several subproblems runs fastest on all hardware threads. Fewer threads pay off only for transforms so small that the cost of starting and synchronising the threads outweighs the work they share. \texttt{nthreads} is therefore set to the number of hardware threads, $40$ on the machine of Chapter~\ref{ch:methodology}.
 
-Table~\ref{tab:opentuner_best} gives the configuration it found. Measured three times against the defaults on the same node, it completes the transform in $1.732$\,s against $2.142$\,s. The margin is close to the $23.3\%$ of Section~\ref{sec:gp_sensitivity}, and the two searches agree on where it comes from: sorting on, $\sigma$ at its default, and a subproblem size near $10^3$ rather than the $10^5$ the library selects. They disagree only on the bin dimensions, $30 \times 121$ here against $258 \times 9$ there, which the flat basin of the best twenty trials suggests is the parameter the objective is least sensitive to.
+\emph{Sorting.} Sorting accounts for $99.5\%$ of the variance in the search (Figure~\ref{fig:importance}), and always in the same direction: without it, consecutive points land far apart on the fine grid, each subgrid spans most of the grid, and spreading spills to main memory. Its cost in \texttt{setpts} is linear in the number of points and is repaid many times over in \texttt{execute}. Sorting is therefore always enabled.
 
-\begin{table}[ht]
-    \centering
-    \begin{tabular}{lll}
-        \hline
-        \textbf{Parameter} & \textbf{Default} & \textbf{Best value found} \\
-        \hline
-        \texttt{spread\_max\_sp\_size} ($S_{\max}$) & $10^5$ & $1061$ \\
-        \texttt{spread\_sort} & 1 (on) & 1 (on) \\
-        \texttt{upsampfac} & 1.25 & 1.284 \\
-        \texttt{spread\_nthr\_atomic} & $10$ & $1$ \\
-        $b_x \times b_y$ & $16 \times 4$ & $30 \times 121$ \\
-        \hline
-    \end{tabular}
-    \caption{Best configuration of the OpenTuner search against the library defaults.}
-    \label{tab:opentuner_best}
-\end{table}
+\emph{Atomic-update threshold.} The threshold only selects how the adding step writes to the shared grid: under a lock below it and with atomic updates above it. A lock is faster on few threads, where it is rarely contended while atomics pay on every cell written, and atomics are faster on many threads, where the lock keeps all but one thread idle. Measured on the reference transform, the two break even between $10$ and $16$ threads, which is close to where the default threshold of $10$ already places the switch. With the thread count fixed at all $40$ hardware threads, every threshold below $40$ selects atomic updates, so its variation changes nothing, and the search confirms that it has no measurable effect on the run time (Figure~\ref{fig:importance}). The threshold is left at its default.
 
-Second search agrees with the Gaussian-process optimisation results. It reaches the same region as the analyses that follow, by a different route and without any model of the space: sorting on, the atomic threshold at its lower value, $\sigma$ within a few percent of its default, a subproblem size two orders of magnitude below the shipped constant(constant value), and bins far taller along the y axis than the defaul $16 \times 4$. The best twenty trials all lie in that region and differ mainly in $b_x$, which varies between $20$ and $41$ with no effect beyond the noise. 
+\subsection{The Same Parameters on the GPU}
+\label{sec:eliminated_gpu}
 
+On a GPU implementation such as cuFINUFFT~\cite{shih2021}, the choices for sorting and the thread count carry over unchanged, for reasons that are only stronger there. The atomic-update threshold does not: a GPU has no setting at which a lock is the better choice, so atomic updates are always used.
 
-\section{Implications for the Remainder of This Thesis}
+\emph{Sorting.} On the GPU each subproblem is spread into a subgrid held in shared memory (Section~\ref{sec:related_libraries}). Without sorting, the points of a subproblem are scattered across the fine grid, so the subgrid that covers them grows far beyond the size of shared memory and cannot be allocated there. Sorting is therefore always enabled.
 
-The stage breakdown and the global sensitivity analysis together justify the choice of parameters examined in the rest of this thesis. \texttt{upsampfac} is the highest-ranked tunable parameter once the binary sorting choice is fixed. Chapter~\ref{ch:sigma_selection} analyzes its effects on spreading and FFT stages performance. The sort bin dimensions rank next, and Chapter~\ref{ch:parameter_tuning} examines how they change amount of memory traffic druing sorint and spreading stages. \texttt{spread\_max\_sp\_size} ($S_{\max}$) ranks low for this particular workload, but also affects spreading memory traffic and load imbalance that are important at other densities and thread counts, so it too receives a dedicated treatment. 
+\emph{Thread count.} A GPU hides the latency of its memory accesses by switching between many threads, which it can do only when it has enough of them. All of its threads are therefore used.
+
+\emph{Atomic updates.} A GPU runs far more threads than a CPU, so a lock on the shared grid would be contended at all times. A lock-based implementation also requires branching, since a thread must test whether it holds the lock before it writes. The threads of a warp execute in lockstep, so when they take different branches the warp runs each branch in turn, and the threads on the other branch stall. Atomic updates avoid the branch, and are therefore always used.
 
