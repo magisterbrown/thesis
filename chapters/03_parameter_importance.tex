@@ -1,7 +1,7 @@
 \chapter{Parameter Analysis \& Reduction}
 \label{ch:parameter_importance}
 
-Not every configuration parameter of FINUFFT deserves a model of its own. This chapter narrows the six performance-relevant parameters down to those that do. It first establishes where a transform spends its time and which stages each parameter acts on (Section~\ref{sec:stage_breakdown}), then ranks the parameters by their effect on the run time with a global search over all of them together (Section~\ref{sec:gp_sensitivity}). Three parameters turn out to have a setting that is best for every transform of realistic size: the thread count, sorting and the atomic-update threshold. They are fixed in Section~\ref{sec:eliminated_params}, on the CPU and on the GPU. The remaining three, the upsampling factor, the maximum subproblem size and the bin dimensions, are analysed in Chapters~\ref{ch:sigma_selection} and~\ref{ch:parameter_tuning}.
+This chapter reduces the set of FINUFFT's configuration parameters to those worth modelling, and so answers the first research question. A parameter is removed when its best setting is obvious, the same for every transform of realistic size, or when it does not influence performance enough to matter. To decide which parameters fall into either group, the chapter first establishes where a transform spends its time and which stages each parameter acts on, then ranks the parameters by their effect on the run time with a joint search over all of them. 
 
 \section{Stage-Level Breakdown}
 \label{sec:stage_breakdown}
@@ -42,13 +42,14 @@ The parameters of Section~\ref{sec:finufft_parameters} act on different stages (
 \section[Global Sensitivity Analysis]{Global Sensitivity Analysis}
 \label{sec:gp_sensitivity}
 
-Table~\ref{tab:param_stages} shows which stages each parameter acts on, but not how much each one matters. The parameters cannot be ranked by varying them one at a time, because they interact: the upsampling factor changes the size of the fine grid that the bins divide, and the bin dimensions change how far apart the points of a subproblem lie, and so how large a subgrid a given $S_{\max}$ produces. The parameters were therefore searched jointly, and the variance of the measured run time was attributed to each parameter and to their interactions afterwards. This section first describes the setup on which the search ran, then the search itself and the ranking it produced.
+Table~\ref{tab:param_stages} shows which stages each parameter acts on. The parameters have different non linear effects on performance: the upsampling factor changes the size of the fine grid that the bins divide, and the bin dimensions change how far apart the points of a subproblem lie, and so how large a subgrid a given $S_{\max}$ produces. The parameters were therefore searched jointly, and the variance of the measured run time was attributed to each parameter and to their interactions afterwards. This section first describes the setup on which the search ran, then the search itself and the ranking it produced.
 
 \subsection{Experimental setup}
 
-The search, like every measurement in this thesis, ran on one machine, with one build of FINUFFT, and on one reference transform unless stated otherwise. The three are described below.
+This subsection describes the setup shared by the search below and by every later measurement in this thesis: the machine the transforms ran on, the build of FINUFFT and the tools that drove and timed it, and the reference transform used unless a chapter states otherwise. The machine matters because the best parameters depend on its cache sizes and thread count, and the reference transform is chosen large enough that its working set far exceeds the last-level cache, so that it exposes the memory effects the parameters control.
 
 \subsubsection{Test Platform}
+\label{sec:platform}
 
 All experiments in this thesis were run on a single machine, a one-socket server with an Intel Xeon E5-2698 v4 processor (Broadwell-EP microarchitecture). Its relevant properties are listed in Table~\ref{tab:platform}. The processor has one NUMA node, so every thread sees the same memory latency and the memory-contention effects discussed in Chapter~\ref{ch:parameter_tuning} are not confounded by remote-memory accesses. Because the two hardware threads of a core share that core's L1 and L2 caches, the per-thread cache share that the analytical models refer to is half of the per-core capacity whenever all $40$ hardware threads are in use.
 
@@ -70,12 +71,14 @@ All experiments in this thesis were run on a single machine, a one-socket server
         \hline
     \end{tabular}
     \caption{Test platform. All measurements in this thesis were taken on this machine.}
+    \label{tab:platform}
 \end{table}
 
 Single-threaded runs were pinned to logical CPU~0 with \texttt{taskset}, so that the operating system could not migrate them between cores mid-measurement. Multi-threaded runs set the thread count through \texttt{OMP\_NUM\_THREADS}; runs described as using ``all threads'' used all $40$ hardware threads.
 % TODO: state OMP_PROC_BIND / OMP_PLACES if they were set, and whether turbo was left enabled.
 
 \subsubsection{Software}
+\label{sec:software}
 
 FINUFFT~\cite{finufftsoftware} was built from source in CMake's \texttt{Release} configuration, with DUCC~\cite{ducc} selected as the FFT backend (\texttt{FINUFFT\_USE\_DUCC0=ON}). FFTW is therefore not used anywhere in this thesis: every FFT, and every FFT plan, referred to in the following chapters is DUCC's. The library was modified in two respects. First, the dimensions of the bins used to sort the nonuniform points are compile-time constants in FINUFFT, and were exposed as run-time options so that Chapters~\ref{ch:parameter_importance} and~\ref{ch:parameter_tuning} could vary them. Second, timers were added inside the spreader that record, for each thread, the time spent in each stage of a subproblem and the thread's total busy time, since the library's own timers report only the spreading stage as a whole; Chapter~\ref{ch:parameter_tuning} relies on them.
 % TODO: FINUFFT commit hash, compiler and version, OS / kernel version, perf version.
@@ -83,8 +86,9 @@ FINUFFT~\cite{finufftsoftware} was built from source in CMake's \texttt{Release}
 Transforms were driven by the test programs that ship with FINUFFT (\texttt{perftest} and \texttt{spreadtestnd}), which time the stages of a transform with the library's own internal timers. Microbenchmarks of the FFT and of the spreading kernel in isolation used Google Benchmark~\cite{googlebenchmark}, and the parameter search of Chapter~\ref{ch:parameter_importance} used Optuna~\cite{optuna2019}, repeated with OpenTuner~\cite{ansel2014opentuner} to check that its result does not depend on the search method.
 
 \subsubsection{Reference Workload}
+\label{sec:workload}
 
-Unless a chapter states otherwise, measurements used one reference transform, chosen to be large enough that its working set far exceeds the L3 cache:
+Measurements used one reference transform, chosen to be large enough that its working set far exceeds the L3 cache:
 
 \begin{itemize}
     \item a type~1 transform in two dimensions, in double precision
@@ -94,7 +98,6 @@ Unless a chapter states otherwise, measurements used one reference transform, ch
     \item points drawn uniformly at random over the domain.
 \end{itemize}
 
-Sweeps over dimension, density, tolerance, thread count and point distribution changed one of these properties at a time, and each figure caption states which.
 
 \subsection{Gaussian-Process Optimization}
 
@@ -144,7 +147,7 @@ The fANOVA percentages are estimates of how sensitive the execution time is to e
 
 Three of the performance-relevant parameters of Section~\ref{sec:finufft_parameters} have a setting that is best for every transform of realistic size, so they are fixed in the rest of this thesis rather than analysed further.
 
-\emph{Thread count.} Every stage of \texttt{execute} and the sort in \texttt{setpts} are parallelised, so a transform large enough to give each thread several subproblems runs fastest on all hardware threads. Fewer threads pay off only for transforms so small that the cost of starting and synchronising the threads outweighs the work they share. \texttt{nthreads} is therefore set to the number of hardware threads, $40$ on the machine of Chapter~\ref{ch:methodology}.
+\emph{Thread count.} Every stage of \texttt{execute} and the sort in \texttt{setpts} are parallelised, so a transform large enough to give each thread several subproblems runs fastest on all hardware threads. Fewer threads pay off only for transforms so small that the cost of starting and synchronising the threads outweighs the work they share. \texttt{nthreads} is therefore set to the number of hardware threads, $40$ on the machine of Section~\ref{sec:platform}.
 
 \emph{Sorting.} Sorting accounts for $99.5\%$ of the variance in the search (Figure~\ref{fig:importance}), and always in the same direction: without it, consecutive points land far apart on the fine grid, each subgrid spans most of the grid, and spreading spills to main memory. Its cost in \texttt{setpts} is linear in the number of points and is repaid many times over in \texttt{execute}. Sorting is therefore always enabled.
 
