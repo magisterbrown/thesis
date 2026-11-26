@@ -1,0 +1,128 @@
+% !TEX root = ../main.tex
+\chapter{Spreader Parameters: Analysis and a Selection Model}
+\label{ch:parameter_tuning}
+
+
+This chapter turns to the two parameters of the spreader, the maximum subproblem size and the bin dimensions. It has two parts. First, it analyses how both parameters affect the memory traffic of a transform. Then it presents a model that ranks combinations of the two parameters to achieve the highest throughput in the spreading stage.
+
+\section{Parameters Under Consideration}
+
+FINUFFT spreads the nonuniform points onto the uniform grid in two steps: the points are first sorted into bins, and then processed in batches, the subproblems. The maximum subproblem size sets how many points a batch may hold, and the bin dimensions set the size of the bins.
+
+\section{Spreading Is Memory Bound}
+\label{sec:memory_bound}
+
+To find out what limits the spreading stage, the reference transform (Section~\ref{sec:workload}) was run with the library defaults at $1$ to $20$ threads and at all $40$ hardware threads, and two quantities were recorded over the spreading loop alone. The first is the traffic between the processor and main memory, read from the memory controllers' own counters of 64-byte line reads and writes; divided by the wall time of the loop it gives the DRAM bandwidth the stage consumes. The second is the number of instructions the threads retire per cycle (IPC), read from each thread's core counters around the gather, spread and add steps. Multiplied by the thread count, IPC becomes the instruction throughput of the whole processor. Each point is the median of three runs. Figure~\ref{fig:memory_bound} shows both quantities.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/memory_bound/scaling.pdf}
+    \caption{DRAM bandwidth (top) and summed IPC (bottom) of the spreading stage against thread count, reference transform. Dotted: one thread scaled linearly; shaded: two hardware threads per core.}
+    \label{fig:memory_bound}
+\end{figure}
+
+Figure~\ref{fig:memory_bound} shows that spreading scales almost linearly up to four threads. Beyond that it falls below linear scaling, and above ten threads its DRAM bandwidth saturates at about $30$\,GB/s, as the roofline model~\cite{williams2009roofline} predicts for a bandwidth-bound kernel. Between ten and twelve threads spreading becomes slower still. At that point the subgrid addition switches from a critical section to a lock-free algorithm~\cite[Sec.~3.7, p.~60]{herlihyshavit2012}, which guarantees system-wide progress regardless of how the threads are scheduled, but executes more instructions for every grid cell it updates.
+
+Above about twelve threads, therefore, the spreading stage is memory bound: its time is set by how much data it moves between the processor and main memory, not by how many instructions it executes. The amount moved is not a fixed property of the transform. It grew from $4.0$ to $8.2$ lines per nonuniform point between one and twenty threads, because the share of the L3 cache available to each thread shrinks as threads are added. It also depends on how the configuration lays out the work. The subproblem size $S_{\max}$ fixes how large each subgrid and gather buffer is, and so whether they stay in cache. The bin dimensions fix the order of the points, and $\sigma$ fixes the size of the fine grid and the width of the kernel. Improving spreading on a machine whose cores are all in use therefore requires understanding how each of these parameters affects the memory demand of the stage.
+
+\section{Subgrid Size}
+
+\section{Model of Memory Operations Based on the Maximum Subproblem Size}
+
+
+\section{Bin Dimensions}
+
+
+\section{Selection Algorithm}
+\label{sec:selection_algorithm}
+
+
+\section{Experimental Results}
+\label{sec:selection_results}
+Table~\ref{tab:selection_results} compares the selected configurations with the library defaults on $54$ test transforms: one, two and three dimensions, single and double precision, and nine densities from $0.125$ to $32$ points per fine-grid cell, each with at least $4.2$ million points and an upsampling factor of $2$. The points are distributed uniformly and, on $20$ threads, also exponentially, which clusters them towards one center of the grid and so departs from the uniform distribution the estimates assume; the same selected configurations are used for both.  Each entry is the geometric mean over the transforms of different densities.
+
+\begin{table}[ht]
+    \centering
+    \small
+    \begin{tabular}{lrrrr}
+        \toprule
+        & \multicolumn{4}{c}{geometric average speed-up} \\
+        \cmidrule(lr){2-5}
+        & \multicolumn{3}{c}{uniform distribution} & exponential distribution \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-5}
+        transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
+        \midrule
+        1D double & $1.99$ & $1.47$ & $1.11$ & $1.76$ \\
+        1D single & $2.10$ & $1.56$ & $1.19$ & $1.73$ \\
+        2D double & $1.30$ & $1.15$ & $1.09$ & $1.39$ \\
+        2D single & $1.45$ & $1.27$ & $1.08$ & $1.66$ \\
+        3D double & $1.07$ & $0.99$ & $0.95$ & $0.97$ \\
+        3D single & $1.13$ & $1.00$ & $0.96$ & $0.97$ \\
+        \midrule
+        all $54$ & $1.45$ & $1.22$ & $1.06$ & $1.37$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Speed-up of sort plus spreading over the defaults.}
+    \label{tab:selection_results}
+\end{table}
+
+The gains are largest in one dimension, $1.99$ to $2.10$ times, and smallest in three dimensions, only $1.07$ to $1.13$ times, where no bin larger than the default fits in L1d, so the procedure keeps the default $16 \times 4 \times 4$. Of the eight transforms that became slower on $20$ threads, six are of this kind, by at most $6\%$: the selected $S_{\max}$ is large enough to leave each thread only a few subproblems, so the work is unevenly divided among the threads, an effect the traffic estimate does not contain. The other two are sparse two-dimensional transforms in double precision, $1\%$ and $12\%$ slower, for which the estimate favours a configuration that the measurement does not.
+
+With fewer threads the gains shrink. Spreading is then limited by latency and computation rather than by bandwidth, so savings in DRAM traffic no longer show in the run time, and in three dimensions, where the bins do not change at all, the selection is no better than the defaults.
+
+\begin{table}[ht]
+    \centering
+    \small
+    \begin{tabular}{lrrrr}
+        \toprule
+        & \multicolumn{4}{c}{geometric average throughput improvement} \\
+        \cmidrule(lr){2-5}
+        & \multicolumn{3}{c}{uniform distribution} & exponential distribution \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-5}
+        transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
+        \midrule
+        1D double & $1.99$ & $1.42$ & $1.11$ & $1.77$ \\
+        1D single & $2.04$ & $1.50$ & $1.19$ & $1.80$ \\
+        2D double & $1.23$ & $1.09$ & $1.09$ & $1.25$ \\
+        2D single & $1.32$ & $1.22$ & $1.08$ & $1.19$ \\
+        3D double & $1.03$ & $1.05$ & $0.96$ & $1.18$ \\
+        3D single & $1.06$ & $1.06$ & $0.97$ & $1.12$ \\
+        \midrule
+        all $54$ & $1.39$ & $1.21$ & $1.06$ & $1.36$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Throughput gain of sort plus spreading over the defaults.}
+    \label{tab:selection_work}
+\end{table}
+
+Table~\ref{tab:selection_work} measures the CPU time of sorting and spreading, the time the threads spend doing actual work. The gains are significant in this case as well, and three-dimensional transforms gain more than in Table~\ref{tab:selection_results}. The wall-clock time is lost because the selection chooses large subproblems that divide the work unevenly: the threads do less work in total, but those that finish early wait for the one holding the most expensive subproblem.
+
+\begin{table}[ht]
+    \centering
+    \small
+    \begin{tabular}{lrrrr}
+        \toprule
+        & \multicolumn{4}{c}{geometric average throughput improvement} \\
+        \cmidrule(lr){2-5}
+        & \multicolumn{3}{c}{uniform distribution} & exponential distribution \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-5}
+        transforms & $20$ threads & $10$ threads & $1$ thread & $20$ threads \\
+        \midrule
+        \multicolumn{5}{l}{\emph{$S_{\max}$ alone, against the library defaults}} \\
+        1D double & $1.04$ & $1.00$ & $1.01$ & $1.01$ \\
+        1D single & $0.97$ & $0.99$ & $0.99$ & $0.98$ \\
+        2D double & $1.11$ & $1.04$ & $1.03$ & $1.16$ \\
+        2D single & $1.04$ & $1.10$ & $1.00$ & $1.01$ \\
+        3D double & $1.03$ & $1.05$ & $0.96$ & $1.18$ \\
+        3D single & $1.06$ & $1.06$ & $0.97$ & $1.12$ \\
+        \cmidrule(lr){1-5}
+        all $54$ & $1.04$ & $1.04$ & $0.99$ & $1.08$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Throughput gain of sort plus spreading with only $S_{\max}$ selected.}
+    \label{tab:selection_split}
+\end{table}
+
+Table~\ref{tab:selection_split} separates the gains from selecting $S_{\max}$ from those of selecting the bin dimensions. On one thread only the bin dimensions improve performance, while selecting $S_{\max}$ changes the time by no more than noise. In three dimensions the algorithm finds no better bin dimensions, because no larger bin fits in L1d, so only one- and two-dimensional transforms benefit from selecting them.
+
+

@@ -287,6 +287,37 @@ $\sigma$~\cite{finufftsoftware}. Every value between that lower bound and $2$
 reaches the requested tolerance, so $\sigma$ can be varied within this range
 to improve performance.
 
+The upsampling factor therefore trades the cost of spreading against the cost
+of the FFT (Figure~\ref{fig:sigma_tradeoff}). Each nonuniform point contributes
+its strength to the $w$ grid cells nearest it along each axis, weighted by the
+kernel, and the uniform array handed to the FFT is the sum of those
+contributions (Figure~\ref{fig:spreading_illustration}). The cost of spreading
+is therefore set by the $w^d$ cells each point is spread into. The kernel width
+shrinks as $\sigma$ grows (Figure~\ref{fig:kernel_vs_sigma}), which makes
+spreading cheaper, but the fine grid grows, which makes the FFT more expensive.
+For a given problem size, dimension and tolerance there is therefore a value of
+$\sigma$ that minimises the total cost of the transform, and
+Chapter~\ref{ch:sigma_selection} models this trade-off.
+
+\begin{figure}[ht]
+    \centering
+    \begin{subfigure}[b]{0.40\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/spreading_illustration/spreading_illustration.pdf}
+        \caption{Spreading onto the uniform grid.}
+        \label{fig:spreading_illustration}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.56\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/kernel_vs_sigma/kernel_vs_sigma.pdf}
+        \caption{Kernel width against $\sigma$.}
+        \label{fig:kernel_vs_sigma}
+    \end{subfigure}
+    \caption{Spreading kernel width}
+    \label{fig:sigma_tradeoff}
+\end{figure}
+
 The kernel error is derived assuming exact arithmetic. Computation in single or
 double precision adds rounding error on top of it, which FINUFFT reports to be
 roughly $N$ times the machine precision in one
