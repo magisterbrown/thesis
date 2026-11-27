@@ -4,23 +4,23 @@
 
 This chapter draws the results of the thesis together. It summarises the main
 findings, answers the research questions posed in
-Section~\ref{sec:research_questions}, compares the results with prior work,
+Chapter~\ref{ch:introduction}, compares the results with prior work,
 states the limitations of the study, and outlines directions for future work.
 
 \section{Main Findings}
 \label{sec:main_findings}
 
 
-Of all the parameters analysed, three left room to improve performance by replacing their default values with better ones: the upsampling factor, the maximum subproblem size and the bin dimensions. Changing any of them reduced the cost of one stage only by raising the cost of another, so each has a value at which the two costs balance. Expressing the cost as a function of the parameter allows that value to be found before the transform runs. The remaining two already had good default values. Sorting is a binary choice, and it should be enabled
-for any input of a realistic size. The atomic-update threshold is an integer that the library compares with the thread count. It selects which of two implementations of the adding stage runs: a critical section when the thread count does not exceed it, atomic updates when it does. The default of $10$ appears to be a reasonable choice on this machine, because from about ten threads upwards spreading is limited by memory bandwidth rather than by the instructions it executes.
+Of all the parameters analysed, three left room to improve performance by replacing their default values with better ones: the upsampling factor, the maximum subproblem size and the bin dimensions. Changing any of them reduced the cost of one stage only by raising the cost of another, so each has a value at which the two costs balance. Expressing the cost as a function of the parameter allows that value to be found before the transform runs. The remaining three have a setting that is best for every transform of realistic size. The thread count should be the number of hardware threads, and sorting should always be enabled. The atomic-update threshold only selects whether the adding stage writes to the shared grid under a lock or with atomic updates; the two break even between $10$ and $16$ threads, close to the default of $10$, and once all threads are in use its value has no measurable effect. The same choices carry over to the GPU, except that there atomic updates are always used.
 
-This thesis derived an accurate model to predict average subgrid size
-assuming uniform distribution of points within one percent error.
-That model allowed to estimate memory demand given different combinations of bin and subproblem sizes.
-Besides subgrid size model amount of data in processing relative to l3 cache fraction. If data execedes 
-that fraction model estiamtes number of cache misses. Miss do not grow sharply after some threshold, 
-thats why model used log linear interpolation between of data relative to cache size to slowly increase amount
-of misses.
+For uniformly distributed points, the closed-form model of the average subgrid
+size agreed with the subgrids logged by the spreader to within one percent. It
+allowed the memory demand of spreading to be estimated for any combination of
+bin dimensions and subproblem size. The traffic model compares the data each
+stage works on with the thread's share of the L3 cache. Cache misses do not
+appear abruptly once that share is exceeded but grow gradually, so the model
+raises them by log-linear interpolation in the ratio of data size to cache
+size.
 
 The combinations of bin dimensions and maximum subproblem size chosen by this
 procedure made the sort and spreading stages $1.27$ times faster on geometric
@@ -52,7 +52,8 @@ Yes, for the three parameters that trade the cost of one stage against another.
 The upsampling factor affects the spreading and FFT stages, and both effects
 were modelled. The cost of spreading depends on the kernel width: each point is
 spread onto $w^d$ grid cells, and since the loop is vectorised, the number of
-vector instructions is predictable and proportional to the time spent. The
+vector instructions is predictable and, on a single thread, proportional to the
+time spent. On many threads spreading is limited by memory bandwidth instead. The
 upsampling factor also sets the input size of the FFT. The throughput of the
 DUCC FFT grew with the transform size while the whole input fitted in cache;
 beyond that, it fell as the $\mathcal{O}(\tilde{N} \log \tilde{N})$ bound

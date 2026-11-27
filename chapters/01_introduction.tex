@@ -51,12 +51,12 @@ the points are sorted, and the thread count above which the adding stage
 switches to atomic updates. This thesis concentrates on the first three, whose
 best values depend on the transform. The upsampling factor sets how much larger
 the fine grid used for spreading is than the output grid. The maximum
-subproblem size sets size of points batch a thread spreads at a time, and the bin
+subproblem size sets how many points a thread spreads at a time, and the bin
 dimensions set the size of the boxes the points are sorted into before
 spreading.
 
-The algorithm has different number of stages based on the transform type. The configuration parameters usually influence multiple stages 
-simultaneously. A parameter that shrinks the work in one stage usually enlarges it in
+The number of stages depends on the transform type, and each configuration
+parameter usually influences several of them at once. A parameter that shrinks the work in one stage usually enlarges it in
 another, so the fastest configuration is a balance rather than an extreme.
 Unless the user overrides them, FINUFFT chooses these values itself, some by
 simple heuristics and others from fixed constants.
@@ -69,7 +69,7 @@ this thesis.
 FINUFFT chooses the values of its configuration parameters automatically, but
 mostly from fixed constants or simple rules rather than from the transform at
 hand. The version of the library that preceded this thesis used the following
-defaults and heuristics, all of which the user could override by any value in corresponding 
+defaults and heuristics, all of which the user could override with any value in the corresponding
 range:
 \begin{itemize}
     \item the \emph{upsampling factor} $\sigma$, range is any real between 1.15 and 2.0, heuristics choose 
@@ -237,15 +237,19 @@ Chapter~\ref{ch:background} introduces the nonuniform fast Fourier transform
 and FINUFFT, including the stages of a transform, the organisation of its
 spreading stage and its configuration parameters, and reviews how FFT and NUFFT
 libraries choose their parameters and how their performance is explained.
-Chapter~\ref{ch:parameter_importance} establishes where a transform spends its
-time and which of the six parameters account for the variation in it, narrowing
-the field for the two chapters that follow.
-Chapter~\ref{ch:sigma_selection} takes the upsampling factor, the highest-ranked
-of them, and analyses and models the two costs it trades against each other.
-Chapter~\ref{ch:parameter_tuning} does the same for the parameters that govern
-the spreader, the maximum subproblem size and the bin dimensions, and derives
-the model of subgrid size on which their behaviour rests. It then combines
-these results into a model of memory traffic, proposes a procedure that selects
-both parameters from it, and evaluates that procedure on $54$ transforms.
+Chapter~\ref{ch:parameter_importance} describes the experimental setup,
+establishes which stages each parameter acts on, and ranks the parameters by a
+joint search over all of them. It fixes the thread count, sorting and the
+atomic-update threshold, whose best settings are obvious or whose effect is
+negligible, on the CPU and on the GPU, and leaves the upsampling factor, the
+maximum subproblem size and the bin dimensions.
+Chapter~\ref{ch:sigma_selection} models how these three parameters affect the
+cost of a transform: the spreading and FFT work traded by the upsampling factor,
+the average subgrid size, and the memory traffic of sorting and spreading, and
+combines these models into an algorithm that selects the spreader parameters
+before the transform runs.
+Chapter~\ref{ch:parameter_tuning} tests the models against measurement and
+evaluates the selection algorithm against the library defaults on $54$
+transforms.
 Chapter~\ref{ch:conclusion} answers the research questions, states the
 limitations of the study, and outlines future work.
